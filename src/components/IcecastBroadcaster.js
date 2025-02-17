@@ -3,6 +3,7 @@ import { PiBroadcastThin } from "react-icons/pi";
 import { BsBroadcast } from "react-icons/bs";
 import styles from './IcecastBroadcaster.module.css';
 import { defaultServerConfig } from '../config/BroadcastConfig';
+import AudioMeters from './AudioMeters';
 
 const IcecastBroadcaster = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -10,11 +11,17 @@ const IcecastBroadcaster = () => {
   const [duration, setDuration] = useState(0);
   const [audioDevices, setAudioDevices] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState('');
+  const [audioLevels, setAudioLevels] = useState({ left: 0, right: 0 });
 
   const audioContext = useRef(null);
   const mediaStream = useRef(null);
   const mediaRecorder = useRef(null);
   const durationInterval = useRef(null);
+  const audioMenuRef = useRef(null);
+  const gainNode = useRef(null);
+  const analyserRef = useRef(null);
+  const animationFrameRef = useRef(null);
+  const knobRef = useRef(null);
 
   // Add connection state tracking
   const [isConnected, setIsConnected] = useState(false);
@@ -24,7 +31,8 @@ const IcecastBroadcaster = () => {
   // Add status message state
   const [statusMessage, setStatusMessage] = useState('');
 
-  const [ws, setWs] = useState(null);
+  // Rename ws to wsRef to avoid shadowing
+  const wsRef = useRef(null);
 
   const [showAudioMenu, setShowAudioMenu] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -43,23 +51,16 @@ const IcecastBroadcaster = () => {
     channels: 2
   });
 
-  // Add this ref
-  const audioMenuRef = useRef(null);
-  
   // Add these new states
   const [inputGain, setInputGain] = useState(1);
-  const gainNode = useRef(null);
-  const analyserRef = useRef(null);
-  const animationFrameRef = useRef(null);
-
-  // Update audio level state to handle stereo
-  const [audioLevels, setAudioLevels] = useState({ left: 0, right: 0 });
-
-  // Add these state variables at the top of your component
   const [gain, setGain] = useState(1);
   const [volume, setVolume] = useState(1);
-  const knobRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  const [audioNodes, setAudioNodes] = useState(null);
+
+  // Add a state to track when audio is ready
+  const [audioReady, setAudioReady] = useState(false);
 
   const handleGainChange = (e) => {
     const value = parseFloat(e.target.value);
@@ -83,11 +84,16 @@ const IcecastBroadcaster = () => {
       analyserRef.current.getFloatTimeDomainData(dataArrayLeft);
       analyserRef.current.getFloatTimeDomainData(dataArrayRight);
 
+      // Add debug logging
+      console.log('Left channel data:', dataArrayLeft[0], 'Right channel data:', dataArrayRight[0]);
+
       const newLevels = {
         left: calculateRMSLevel(dataArrayLeft),
         right: calculateRMSLevel(dataArrayRight)
       };
       
+      // Add debug logging
+      console.log('Calculated levels:', newLevels);
       
       setAudioLevels(newLevels);
       animationFrameRef.current = requestAnimationFrame(updateLevels);
@@ -113,27 +119,15 @@ const IcecastBroadcaster = () => {
     const getAudioDevices = async () => {
       try {
         // First request permission to access audio devices
-        await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(track => track.stop()); // Stop the test stream
         
         // Then enumerate devices
         const devices = await navigator.mediaDevices.enumerateDevices();
         const audioInputs = devices.filter(device => device.kind === 'audioinput');
         setAudioDevices(audioInputs);
         if (audioInputs.length > 0) {
-          // Set first device as default and initialize metering for all channels
           setSelectedDevice(audioInputs[0].deviceId);
-          const defaultDevice = audioInputs[0];
-          if (defaultDevice.channelCount) {
-            setAudioLevels(
-              Array(defaultDevice.channelCount).fill(0).reduce((acc, _, idx) => {
-                acc[`channel${idx}`] = 0;
-                return acc;
-              }, {})
-            );
-          } else {
-            // Fallback to stereo if channel count not available
-            setAudioLevels({left: 0, right: 0});
-          }
         }
       } catch (error) {
         console.error('Error accessing audio devices:', error);
@@ -145,6 +139,12 @@ const IcecastBroadcaster = () => {
     return () => {
       if (durationInterval.current) {
         clearInterval(durationInterval.current);
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (audioContext.current) {
+        audioContext.current.close();
       }
       stopBroadcast();
     };
@@ -220,29 +220,9 @@ const IcecastBroadcaster = () => {
     try {
       console.log('Starting broadcast...');
       
-      // Create WebSocket connection
-      const socket = new WebSocket('ws://localhost:3001');
-      
-      socket.onopen = () => {
-        console.log('WebSocket connected');
-        setIsConnected(true);
-      };
-
-      socket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-      };
-
-      socket.onmessage = (event) => {
-        console.log('Received message from server:', event.data);
-      };
-
-      setWs(socket);
-      
-      // Set up audio
-      audioContext.current = new AudioContext();
-      const stream = await navigator.mediaDevices.getUserMedia({
+      // Get user media stream
+      const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
-          deviceId: selectedDevice,
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false
@@ -251,51 +231,56 @@ const IcecastBroadcaster = () => {
       
       mediaStream.current = stream;
       
-      // Set up MediaRecorder with explicit logging
-      mediaRecorder.current = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus',
-        audioBitsPerSecond: 128000
-      });
+      // Set up WebSocket connection
+      const wsUrl = 'ws://localhost:3001';
+      console.log('Connecting to WebSocket:', wsUrl);
       
-      mediaRecorder.current.ondataavailable = (event) => {
-        if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
-          console.log('✓ Audio chunk received');  // Simple check mark to confirm data
-          socket.send(event.data);
-        }
+      wsRef.current = new WebSocket(wsUrl);
+      wsRef.current.binaryType = 'arraybuffer';
+
+      wsRef.current.onopen = () => {
+        console.log('WebSocket connected');
+        setIsConnected(true);
+        
+        // Create and start MediaRecorder
+        mediaRecorder.current = new MediaRecorder(stream, {
+          mimeType: 'audio/webm;codecs=opus',
+          audioBitsPerSecond: 128000
+        });
+
+        mediaRecorder.current.ondataavailable = (event) => {
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(event.data);
+          }
+        };
+
+        mediaRecorder.current.start(100);
+        setIsRecording(true);
       };
-      
-      // Start recording with longer timeslice
-      console.log('Starting MediaRecorder...');
-      mediaRecorder.current.start(500);  // Increased to 500ms for clearer monitoring
-      setIsRecording(true);
-      
-      // Set up audio analysis chain
-      const source = audioContext.current.createMediaStreamSource(stream);
-      analyserRef.current = audioContext.current.createAnalyser();
-      gainNode.current = audioContext.current.createGain();
-      
-      source
-        .connect(gainNode.current)
-        .connect(analyserRef.current);
-      
-      updateLevels();
+
+      wsRef.current.onclose = () => {
+        console.log('WebSocket closed');
+        setIsConnected(false);
+        stopBroadcast();
+      };
+
+      wsRef.current.onmessage = (event) => {
+        console.log('Received message from server:', event.data);
+      };
       
     } catch (error) {
       console.error('Failed to start broadcast:', error);
-      stopBroadcast();
+      setIsRecording(false);
     }
   };
 
   const stopBroadcast = () => {
     setStatusMessage('Stopping broadcast...');
     setIsConnected(false);
+    setAudioNodes(null);  // Clear audio nodes
     
     if (mediaRecorder.current?.state === 'recording') {
       mediaRecorder.current.stop();
-    }
-    
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
     }
     
     mediaStream.current?.getTracks().forEach(track => track.stop());
@@ -306,7 +291,6 @@ const IcecastBroadcaster = () => {
     
     clearInterval(durationInterval.current);
     setIsRecording(false);
-    setAudioLevels({ left: 0, right: 0 });
     setDuration(0);
     connectionAttempts.current = 0;
     setStatusMessage('Broadcast stopped');
@@ -349,6 +333,72 @@ const IcecastBroadcaster = () => {
     document.removeEventListener('mousemove', handleKnobMouseMove);
     document.removeEventListener('mouseup', handleKnobMouseUp);
   };
+
+  // Add this useEffect for initial audio setup
+  useEffect(() => {
+    const setupInitialAudio = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: selectedDevice ? { exact: selectedDevice } : undefined,
+            channelCount: 2,
+            sampleRate: 48000
+          }
+        });
+        
+        mediaStream.current = stream;
+        
+        // Create audio context and nodes
+        audioContext.current = new AudioContext();
+        const source = audioContext.current.createMediaStreamSource(stream);
+        gainNode.current = audioContext.current.createGain();
+        const analyser = audioContext.current.createAnalyser();
+        analyserRef.current = analyser;
+        
+        // Configure analyser
+        analyserRef.current.fftSize = 2048;
+        
+        // Connect the audio graph for monitoring
+        source.connect(gainNode.current);
+        gainNode.current.connect(analyserRef.current);
+        
+        // Set initial gain value
+        if (gainNode.current) {
+          gainNode.current.gain.value = gain * volume;
+        }
+
+        // Signal that audio is ready
+        setAudioReady(true);
+
+      } catch (error) {
+        console.error('Failed to setup initial audio:', error);
+        setStatusMessage('Failed to access audio device');
+      }
+    };
+
+    if (selectedDevice) {
+      setupInitialAudio();
+    }
+
+    return () => {
+      setAudioReady(false);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (mediaStream.current) {
+        mediaStream.current.getTracks().forEach(track => track.stop());
+      }
+      if (audioContext.current) {
+        audioContext.current.close();
+      }
+    };
+  }, [selectedDevice, gain, volume]);
+
+  useEffect(() => {
+    return () => {
+      stopBroadcast();
+    };
+  }, []);
 
   return (
     <div className={styles.broadcasterContainer}>
@@ -418,31 +468,31 @@ const IcecastBroadcaster = () => {
           </div>
         </header>
 
-       
+        <div className={styles.mainControls}>
+          <button
+            onClick={isRecording ? stopBroadcast : startBroadcast}
+            className={`${styles.broadcastButton} ${isRecording ? styles.recording : ''}`}
+          >
+            {isRecording ? 'Stop' : 'Start'} Broadcast
+          </button>
 
-        <div className={styles.audioControls}>
-          <div className={styles.controlsRow}>
-            {/* Stereo Meters */}
-            <div className={styles.stereoMeterContainer}>
-              <div className={styles.meterChannel}>
-                <div className={styles.verticalMeter}>
-                  <div 
-                    className={styles.meterFill}
-                    style={{ height: `${audioLevels.left * 100}%` }}
-                  />
-                </div>
-              </div>
-              <div className={styles.meterChannel}>
-                <div className={styles.verticalMeter}>
-                  <div 
-                    className={styles.meterFill}
-                    style={{ height: `${audioLevels.right * 100}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Volume Slider */}
+          <div className={styles.meterAndVolume}>
+            {console.log('Passing audio nodes:', {
+              context: audioContext.current,
+              source: mediaStream.current,
+              analyser: analyserRef.current,
+              gainNode: gainNode.current
+            })}
+            <AudioMeters 
+              audioNodes={{
+                context: audioContext.current,
+                source: mediaStream.current,
+                analyser: analyserRef.current,
+                gainNode: gainNode.current
+              }}
+              isRecording={isRecording}
+            />
+            
             <input
               type="range"
               min="0"
@@ -459,9 +509,6 @@ const IcecastBroadcaster = () => {
               className={styles.volumeSlider}
             />
           </div>
-          <span className={styles.statusText}>
-            {isRecording ? 'Live' : 'Ready'}
-          </span>
         </div>
 
         <div className={styles.broadcastStats}>
@@ -490,18 +537,6 @@ const IcecastBroadcaster = () => {
             <span className={styles.statValue}>{isRecording ? broadcastStats.sampleRate : '44.1 kHz'}</span>
           </div>
         </div>
-
-        {/* Button */}
-        <div className={styles.buttonContainer}>
-          <button
-            onClick={isRecording ? stopBroadcast : startBroadcast}
-            className={`${styles.broadcastButton} ${isRecording ? styles.recording : ''}`}
-          >
-            <div className={`${styles.buttonIcon} ${isRecording ? styles.stop : styles.start}`} />
-          </button>
-        </div>
-
-       
       </div>
     </div>
   );

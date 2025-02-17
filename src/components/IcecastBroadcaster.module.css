@@ -312,63 +312,68 @@ h4 {
 
 .stereoMeterContainer {
   display: flex;
-  gap: 8px;
-  height: 200px;
+  gap: 4px;
+  height: 150px;
   padding: 10px;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.1);
   border-radius: 4px;
+  align-items: flex-end;
 }
 
 .meterChannel {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 4px;
-}
-
-.meterLabel {
-  color: #fff;
-  font-size: 12px;
-  width: 12px;
+  width: 30px;
+  height: 100%;
 }
 
 .verticalMeter {
-  position: relative;
-  width: 20px;
-  height: 100%;
-  background: #1a1a1a;
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.meterScale {
-  position: absolute;
-  right: 22px;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  color: #666;
-  font-size: 10px;
-  pointer-events: none;
-}
-
-.meterTick {
-  transform: translateY(50%);
-}
-
-.meterBackground {
-  position: absolute;
-  bottom: 0;
   width: 100%;
   height: 100%;
   background: #2a2a2a;
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
 }
 
 .meterFill {
   position: absolute;
   bottom: 0;
   width: 100%;
-  transition: height 0.05s ease-out;
+  background: linear-gradient(
+    to top,
+    #00ff00 0%,
+    #00ff00 70%,
+    #ffff00 70%,
+    #ffff00 85%,
+    #ff0000 85%,
+    #ff0000 100%
+  );
+  transition: height 0.1s ease-out;
+}
+
+.meterScale {
+  position: absolute;
+  right: -20px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: #666;
+  font-size: 10px;
+  padding: 5px 0;
+}
+
+.meterTick {
+  width: 15px;
+  text-align: right;
+}
+
+.meterLabel {
+  color: #fff;
+  font-size: 12px;
+  width: 12px;
 }
 
 .peak {

@@ -1,0 +1,114 @@
+.stereoMeterContainer {
+  display: flex;
+  gap: 2px;
+  height: 200px;
+  padding: 8px;
+  background: #cecece;
+  border-radius: 4px;
+  position: relative;
+}
+
+.meterChannel {
+  position: relative;
+  width: 14px;
+  height: 100%;
+  background: #222;
+  border-radius: 2px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+}
+
+.verticalMeter {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #1a1a1a;
+}
+
+.meterFill {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  transition: height 0.1s ease-out, background-color 0.2s ease;
+  box-shadow: 0 0 2px rgba(0,255,0,0.5);
+}
+
+.meterScaleMarks {
+  position: absolute;
+  left: -16px;
+  width: 12px;
+  height: 100%;
+  pointer-events: none;
+}
+
+.scaleMark {
+  position: absolute;
+  width: 8px;
+  right: 0;
+  border-top: 1px solid #555;
+}
+
+.scaleMark:nth-child(5n) {  /* Only show numbers on every 5th mark */
+  width: 12px;
+}
+
+.scaleMark span {
+  position: absolute;
+  right: 16px;
+  top: -4px;
+  font-size: 7px;
+  color: #888;
+  font-family: monospace;
+  white-space: nowrap;
+}
+
+/* Add subtle tick marks */
+.verticalMeter::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* Combine gradient zones with tick marks */
+  background: 
+    linear-gradient(to bottom,
+      rgba(255,0,0,0.15) 0%,     /* Red zone */
+      rgba(255,0,0,0.15) 15%,
+      rgba(255,165,0,0.15) 15%,   /* Orange zone */
+      rgba(255,165,0,0.15) 25%,
+      rgba(0,255,0,0.15) 25%,     /* Green zone */
+      rgba(0,255,0,0.15) 100%
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 9px,
+      rgba(255,255,255,0.05) 9px,
+      rgba(255,255,255,0.05) 10px
+    );
+  pointer-events: none;
+}
+
+.meterWithScale {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.scaleNumbers {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 4px 4px 4px 0;
+  color: #888;
+  font-size: 7px;
+  font-family: monospace;
+  text-align: right;
+  height: 200px;  /* Match meter height */
+}
+
+.scaleNumbers div {
+  line-height: 1;
+  padding-right: 2px;
+} 
