@@ -170,41 +170,51 @@ const IcecastBroadcaster = () => {
     };
   }, [isRecording]);
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        // Use the correct endpoint for JSON stats
-        const response = await fetch(`http://${serverConfig.url}/admin/stats.json`);
-        const data = await response.json();
-        
-        // Update broadcast stats if we have mount point data
-        if (data.icestats.source) {
-          const sourceStats = Array.isArray(data.icestats.source) 
-            ? data.icestats.source.find(s => s.mount === '/ether')
-            : data.icestats.source;
-          
-          if (sourceStats) {
-            setBroadcastStats({
-              mountPoint: sourceStats.mount,
-              streamTime: sourceStats.stream_start || '00:00:00',
-              listeners: sourceStats.listeners || 0,
-              audioFormat: 'Opus',
-              bitrate: '128 kbps',
-              sampleRate: '48 kHz',
-              channels: 2
-            });
-          }
+  const fetchStats = async () => {
+    try {
+      // Add auth headers for stats
+      const response = await fetch(`http://${serverConfig.url}/admin/stats.json`, {
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Basic ' + btoa('admin:hackme')
         }
-      } catch (error) {
-        console.error('Failed to fetch broadcast stats:', error);
+      });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.error('Stats authentication failed');
+          return;
+        }
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-    };
-
-    if (isRecording) {
-      const interval = setInterval(fetchStats, 5000);
-      return () => clearInterval(interval);
+      
+      const data = await response.json();
+      
+      // Update stats if we have mount point data
+      if (data.icestats && data.icestats.source) {
+        const sources = Array.isArray(data.icestats.source) 
+          ? data.icestats.source 
+          : [data.icestats.source];
+          
+        const etherSource = sources.find(s => s.mount === '/ether');
+        
+        if (etherSource) {
+          setBroadcastStats(prev => ({
+            ...prev,
+            mountPoint: etherSource.mount,
+            streamTime: etherSource.stream_start_iso8601 || prev.streamTime,
+            listeners: etherSource.listeners || 0,
+            audioFormat: etherSource.server_type || 'Opus',
+            bitrate: `${etherSource['ice-bitrate'] || 128} kbps`,
+            sampleRate: `${etherSource.audio_samplerate || 48000} Hz`,
+            channels: etherSource.audio_channels || 2
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch broadcast stats:', error);
     }
-  }, [isRecording, serverConfig.url]);
+  };
 
   const startBroadcast = async () => {
     try {
