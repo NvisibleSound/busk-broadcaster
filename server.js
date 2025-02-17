@@ -1,106 +1,96 @@
 import { WebSocketServer } from 'ws';
 import net from 'net';
+import fetch from 'node-fetch';
 
 const wss = new WebSocketServer({ port: 3001 });
 console.log('WebSocket server started on port 3001');
 
+// Add stats endpoint
+const getIcecastStats = async () => {
+  try {
+    const response = await fetch('https://www.buskplayer.com/status-json.xsl', {
+      headers: {
+        'Authorization': 'Basic ' + Buffer.from('source:EtherIsBetter').toString('base64')
+      }
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching Icecast stats:', error);
+    return null;
+  }
+};
+
 wss.on('connection', async (ws) => {
-  console.log('Browser connected to WebSocket server');
+  console.log('Browser connected');
   let icecast = null;
   let isSourceEstablished = false;
-  let totalBytesReceived = 0;
-  let totalBytesSent = 0;
-  let isFirstChunk = true;
-
+  
   const setupIcecastConnection = () => {
-    console.log('Setting up Icecast connection...');
+    if (icecast) {
+      console.log('Cleaning up existing connection...');
+      icecast.destroy();
+    }
+
+    console.log('Creating new Icecast connection...');
     icecast = new net.Socket();
     
+    // Add error handler
+    icecast.on('error', (error) => {
+      console.error('Icecast socket error:', error);
+    });
+    
+    // Connect to Icecast server
+    console.log('Attempting to connect to Icecast at 64.227.99.194:8000...');
     icecast.connect(8000, '64.227.99.194', () => {
-      console.log('Connected to Icecast, sending headers');
+      console.log('TCP Connected, sending SOURCE request...');
       
       const headers = [
         'SOURCE /ether HTTP/1.0',
         'Authorization: Basic ' + Buffer.from('source:EtherIsBetter').toString('base64'),
+        'User-Agent: BuskBroadcaster/1.0',
         'Content-Type: audio/webm;codecs=opus',
         'Ice-Public: 1',
         'Ice-Name: buSk',
         'Ice-Description: Play music. Get Paid.',
+        'Ice-URL: https://www.buskplayer.com/ether',
+        'Ice-Audio-Info: bitrate=128000;channels=2;samplerate=48000',
         '',
         ''
       ].join('\r\n');
       
-      console.log('Sending headers to Icecast');
+      console.log('Sending headers:', headers);
       icecast.write(headers);
     });
 
     icecast.on('data', (data) => {
-      const response = data.toString();
-      console.log('Icecast response:', response);
-      if (response.includes('200 OK')) {
-        console.log('Source connection established');
+      console.log('Received from Icecast:', data.toString());
+      if (data.toString().includes('HTTP/1.0 200 OK')) {
         isSourceEstablished = true;
+        console.log('Source mount established successfully');
+        ws.send(JSON.stringify({ type: 'CONNECTED' }));
       }
-    });
-
-    icecast.on('error', (error) => {
-      console.error('Icecast connection error:', error);
-      isSourceEstablished = false;
-    });
-
-    icecast.on('close', () => {
-      console.log('Icecast connection closed');
-      console.log(`Total bytes received: ${totalBytesReceived}`);
-      console.log(`Total bytes sent: ${totalBytesSent}`);
-      isSourceEstablished = false;
-    });
-
-    // Add drain handler
-    icecast.on('drain', () => {
-      console.log('Icecast buffer drained');
     });
   };
 
-  ws.on('message', async (data) => {
-    try {
-      const message = JSON.parse(data.toString());
-      if (message.type === 'config') {
-        console.log('Received config:', message);
-        setupIcecastConnection();
-      }
-    } catch (e) {
-      // Not JSON, must be audio data
-      if (icecast && isSourceEstablished) {
-        totalBytesReceived += data.length;
-        
-        if (isFirstChunk) {
-          console.log('First audio chunk received:');
-          console.log('Size:', data.length);
-          console.log('First 32 bytes:', data.slice(0, 32).toString('hex'));
-          isFirstChunk = false;
-        }
-
-        try {
-          const writeSuccess = icecast.write(data);
-          totalBytesSent += data.length;
-          
-          if (!writeSuccess) {
-            console.log('Write buffer full - waiting for drain');
-          }
-        } catch (error) {
-          console.error('Error writing to Icecast:', error);
-        }
-      }
+  // Set up WebSocket message handling
+  ws.on('message', (data) => {
+    console.log('✓ Server received audio chunk');  // Simple confirmation
+    
+    if (!icecast) {
+      setupIcecastConnection();
+    }
+    
+    if (isSourceEstablished && icecast) {
+      icecast.write(data);
     }
   });
 
+  // Handle WebSocket closure
   ws.on('close', () => {
     console.log('Browser disconnected');
-    console.log(`Final stats:`);
-    console.log(`Total bytes received: ${totalBytesReceived}`);
-    console.log(`Total bytes sent: ${totalBytesSent}`);
     if (icecast) {
-      icecast.end();
+      icecast.destroy();
+      icecast = null;
     }
   });
 });

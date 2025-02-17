@@ -2,27 +2,19 @@ import React, { useState, useRef, useEffect } from 'react';
 import { PiBroadcastThin } from "react-icons/pi";
 import { BsBroadcast } from "react-icons/bs";
 import styles from './IcecastBroadcaster.module.css';
-import AudioMeter from './AudioMeter';
-import AudioInput from './AudioInput';
-import AudioControls from './AudioControls';
+import { defaultServerConfig } from '../config/BroadcastConfig';
 
 const IcecastBroadcaster = () => {
   const [isRecording, setIsRecording] = useState(false);
-  const isRecordingRef = useRef(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [duration, setDuration] = useState(0);
   const [audioDevices, setAudioDevices] = useState([]);
   const [selectedDevice, setSelectedDevice] = useState('');
 
-  const [audioContext, setAudioContext] = useState(null);
-  const [mediaStream, setMediaStream] = useState(null);
+  const audioContext = useRef(null);
+  const mediaStream = useRef(null);
   const mediaRecorder = useRef(null);
   const durationInterval = useRef(null);
-  const analyserRef = useRef(null);
-  const wsRef = useRef(null);
-  const audioMenuRef = useRef(null);
-  const animationFrameRef = useRef(null);
-  const knobRef = useRef(null);
 
   // Add connection state tracking
   const [isConnected, setIsConnected] = useState(false);
@@ -32,8 +24,13 @@ const IcecastBroadcaster = () => {
   // Add status message state
   const [statusMessage, setStatusMessage] = useState('');
 
+  const [ws, setWs] = useState(null);
+
   const [showAudioMenu, setShowAudioMenu] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
+  // Add state for server config to allow runtime updates
+  const [serverConfig, setServerConfig] = useState(defaultServerConfig);
 
   // Add new state for broadcast stats
   const [broadcastStats, setBroadcastStats] = useState({
@@ -46,48 +43,54 @@ const IcecastBroadcaster = () => {
     channels: 2
   });
 
+  // Add this ref
+  const audioMenuRef = useRef(null);
+  
+  // Add these new states
+  const [inputGain, setInputGain] = useState(1);
+  const gainNode = useRef(null);
+  const analyserRef = useRef(null);
+  const animationFrameRef = useRef(null);
+
   // Update audio level state to handle stereo
   const [audioLevels, setAudioLevels] = useState({ left: 0, right: 0 });
 
-  const calculateRMSLevel = (dataArray) => {
-    let sum = 0;
-    for (let i = 0; i < dataArray.length; i++) {
-      const value = dataArray[i];
-      sum += value * value;
+  // Add these state variables at the top of your component
+  const [gain, setGain] = useState(1);
+  const [volume, setVolume] = useState(1);
+  const knobRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleGainChange = (e) => {
+    const value = parseFloat(e.target.value);
+    setInputGain(value);
+    if (gainNode.current) {
+      gainNode.current.gain.value = value;
     }
+  };
+
+  const calculateRMSLevel = (dataArray) => {
+    const sum = dataArray.reduce((acc, val) => acc + (val * val), 0);
     const rms = Math.sqrt(sum / dataArray.length);
-    
-    // Convert to dB with adjusted range
-    const db = 20 * Math.log10(Math.max(rms, 0.0000001));
-    
-    // Adjust the mapping range for better visibility
-    // Map dB range (-50...0) to (0...1) with a more aggressive curve
-    const normalized = (db + 50) / 50;  // Changed from 60 to 50 for more sensitivity
-    
-    // Apply a non-linear scaling to boost low-level signals
-    const scaled = Math.pow(normalized, 0.7);  // Added exponential scaling
-    
-    // Amplify the result slightly and clamp between 0 and 1
-    return Math.max(0, Math.min(1, scaled * 1.2));  // Amplified by 1.2
+    return Math.min(1, rms); // Normalize between 0 and 1
   };
 
   const updateLevels = () => {
-    if (analyserRef.current && isRecording) {
-      const bufferLength = analyserRef.current.frequencyBinCount;
-      const dataArray = new Float32Array(bufferLength);
+    if (analyserRef.current) {
+      const dataArrayLeft = new Float32Array(analyserRef.current.fftSize);
+      const dataArrayRight = new Float32Array(analyserRef.current.fftSize);
       
-      analyserRef.current.getFloatTimeDomainData(dataArray);
-      const level = calculateRMSLevel(dataArray);
+      analyserRef.current.getFloatTimeDomainData(dataArrayLeft);
+      analyserRef.current.getFloatTimeDomainData(dataArrayRight);
+
+      const newLevels = {
+        left: calculateRMSLevel(dataArrayLeft),
+        right: calculateRMSLevel(dataArrayRight)
+      };
       
-      // More aggressive smoothing
-      setAudioLevels(prevLevels => ({
-        left: Math.max(level, prevLevels.left * 0.75),  // Even faster decay
-        right: Math.max(level, prevLevels.right * 0.75) // Even faster decay
-      }));
       
+      setAudioLevels(newLevels);
       animationFrameRef.current = requestAnimationFrame(updateLevels);
-    } else {
-      setAudioLevels({ left: 0, right: 0 });
     }
   };
 
@@ -167,267 +170,226 @@ const IcecastBroadcaster = () => {
     };
   }, [isRecording]);
 
-  // Add this effect to handle stats polling
   useEffect(() => {
-    let statsInterval;
-    if (isRecording && wsRef.current) {
-      const fetchStats = () => {
-        wsRef.current.send(JSON.stringify({ type: 'GET_STATS' }));
-      };
-      
-      fetchStats(); // Initial fetch
-      statsInterval = setInterval(fetchStats, 5000); // Poll every 5 seconds
-    }
-    return () => {
-      if (statsInterval) {
-        clearInterval(statsInterval);
-      }
-    };
-  }, [isRecording]);
-
-  // Add this useEffect to set up audio when device is selected
-  useEffect(() => {
-    const setupAudio = async () => {
+    const fetchStats = async () => {
       try {
-        // Create audio context if it doesn't exist
-        const context = new AudioContext();
+        // Use the correct endpoint for JSON stats
+        const response = await fetch(`http://${serverConfig.url}/admin/stats.json`);
+        const data = await response.json();
         
-        // Get media stream with selected device
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            deviceId: selectedDevice,
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false
+        // Update broadcast stats if we have mount point data
+        if (data.icestats.source) {
+          const sourceStats = Array.isArray(data.icestats.source) 
+            ? data.icestats.source.find(s => s.mount === '/ether')
+            : data.icestats.source;
+          
+          if (sourceStats) {
+            setBroadcastStats({
+              mountPoint: sourceStats.mount,
+              streamTime: sourceStats.stream_start || '00:00:00',
+              listeners: sourceStats.listeners || 0,
+              audioFormat: 'Opus',
+              bitrate: '128 kbps',
+              sampleRate: '48 kHz',
+              channels: 2
+            });
           }
-        });
-        
-        setAudioContext(context);
-        setMediaStream(stream);
-        
+        }
       } catch (error) {
-        console.error('Error setting up audio:', error);
+        console.error('Failed to fetch broadcast stats:', error);
       }
     };
 
-    if (selectedDevice) {
-      setupAudio();
+    if (isRecording) {
+      const interval = setInterval(fetchStats, 5000);
+      return () => clearInterval(interval);
     }
-
-    // Cleanup
-    return () => {
-      if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-      }
-      if (audioContext) {
-        audioContext.close();
-      }
-    };
-  }, [selectedDevice]);
+  }, [isRecording, serverConfig.url]);
 
   const startBroadcast = async () => {
     try {
-      // Test all possible formats first
-      const formats = [
-        'audio/ogg;codecs=vorbis',
-        'audio/ogg;codecs=opus',
-        'audio/webm;codecs=opus',
-        'audio/mp3',
-        'audio/mpeg',
-        'audio/wav'
-      ];
-
-      console.log('Checking supported formats:');
-      formats.forEach(format => {
-        console.log(`${format}: ${MediaRecorder.isTypeSupported(format)}`);
-      });
-
-      setStatusMessage('Starting broadcast...');
-      setIsRecording(true);
-      isRecordingRef.current = true;
+      console.log('Starting broadcast...');
       
-      // Create audio context if it doesn't exist
-      const context = new AudioContext();
-      setAudioContext(context);
+      // Create WebSocket connection
+      const socket = new WebSocket('ws://localhost:3001');
+      
+      socket.onopen = () => {
+        console.log('WebSocket connected');
+        setIsConnected(true);
+      };
 
-      // Get media stream with selected device
+      socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      socket.onmessage = (event) => {
+        console.log('Received message from server:', event.data);
+      };
+
+      setWs(socket);
+      
+      // Set up audio
+      audioContext.current = new AudioContext();
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: selectedDevice,
           echoCancellation: false,
           noiseSuppression: false,
-          autoGainControl: false,
-          sampleRate: 44100,
-          channelCount: 2
+          autoGainControl: false
         }
       });
       
-      setMediaStream(stream);
-
-      // Set up audio pipeline
-      const source = context.createMediaStreamSource(stream);
-      const analyser = context.createAnalyser();
-      const destination = context.createMediaStreamDestination();
+      mediaStream.current = stream;
       
-      // Configure analyzer
-      analyser.fftSize = 2048;
-      analyser.smoothingTimeConstant = 0.5;
-      analyser.minDecibels = -50;
-      analyser.maxDecibels = -10;
-
-      // Connect the audio graph
-      source.connect(analyser);
-      analyser.connect(destination);
-      
-      // Create and wait for WebSocket connection
-      const socket = new WebSocket('ws://localhost:3001');
-      
-      // Try Ogg format first, then fall back to WebM
-      const mimeType = 'audio/webm;codecs=opus';  // We know this works
-      console.log('Using MIME type:', mimeType);
-
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('WebSocket connection timeout'));
-        }, 5000);
-
-        socket.onopen = () => {
-          clearTimeout(timeout);
-          console.log('WebSocket connected successfully');
-          
-          // Send config only after connection is established
-          socket.send(JSON.stringify({
-            type: 'config',
-            mountPoint: '/ether',
-            format: mimeType,
-            sampleRate: 48000,
-            channels: 2,
-            bitrate: 128000
-          }));
-          
-          resolve();
-        };
-
-        socket.onerror = () => {
-          clearTimeout(timeout);
-          reject(new Error('WebSocket connection failed'));
-        };
-      });
-
-      wsRef.current = socket;
-      
-      socket.onclose = (event) => {
-        console.log('WebSocket closed:', event);
-        if (isRecordingRef.current) {
-          stopBroadcast();
-        }
-      };
-
-      socket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        setStatusMessage('Connection error');
-      };
-
-      mediaRecorder.current = new MediaRecorder(destination.stream, {
+      // Set up MediaRecorder with explicit logging
+      mediaRecorder.current = new MediaRecorder(stream, {
         mimeType: 'audio/webm;codecs=opus',
         audioBitsPerSecond: 128000
       });
-
-      mediaRecorder.current.ondataavailable = (event) => {
-        if (event.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
-          console.log('Audio chunk size:', event.data.size);
-          wsRef.current.send(event.data);
-        }
-      };
-
-      mediaRecorder.current.onstart = () => {
-        console.log('MediaRecorder started with format:', mimeType);
-        setStatusMessage('Broadcasting');
-      };
-
-      // Use larger chunks for more stable streaming
-      mediaRecorder.current.start(500);  // 500ms chunks instead of 100ms
       
-      // After a second, switch to larger chunks
-      setTimeout(() => {
-        if (mediaRecorder.current?.state === 'recording') {
-          mediaRecorder.current.stop();
-          mediaRecorder.current.start(500); // Switch to 500ms chunks
+      mediaRecorder.current.ondataavailable = (event) => {
+        if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+          console.log('✓ Audio chunk received');  // Simple check mark to confirm data
+          socket.send(event.data);
         }
-      }, 1000);
+      };
+      
+      // Start recording with longer timeslice
+      console.log('Starting MediaRecorder...');
+      mediaRecorder.current.start(500);  // Increased to 500ms for clearer monitoring
+      setIsRecording(true);
+      
+      // Set up audio analysis chain
+      const source = audioContext.current.createMediaStreamSource(stream);
+      analyserRef.current = audioContext.current.createAnalyser();
+      gainNode.current = audioContext.current.createGain();
+      
+      source
+        .connect(gainNode.current)
+        .connect(analyserRef.current);
+      
+      updateLevels();
       
     } catch (error) {
       console.error('Failed to start broadcast:', error);
-      setStatusMessage('Failed to start broadcast');
-      setIsRecording(false);
-      isRecordingRef.current = false;
-      throw error;
+      stopBroadcast();
     }
   };
 
   const stopBroadcast = () => {
     setStatusMessage('Stopping broadcast...');
-    isRecordingRef.current = false;
-    setIsRecording(false);
+    setIsConnected(false);
     
-    // First stop recording
     if (mediaRecorder.current?.state === 'recording') {
       mediaRecorder.current.stop();
     }
-
-    // Clean up WebSocket
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
-    // Stop all tracks in the media stream
-    if (mediaStream) {
-      mediaStream.getTracks().forEach(track => track.stop());
-    }
-
-    // Clean up audio context
-    if (audioContext) {
-      audioContext.close();
-    }
-
-    // Clean up animation frame
+    
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
-
-    // Reset all states
-    setIsConnected(false);
+    
+    mediaStream.current?.getTracks().forEach(track => track.stop());
+    
+    if (audioContext.current && audioContext.current.state !== 'closed') {
+      audioContext.current.close();
+    }
+    
+    clearInterval(durationInterval.current);
+    setIsRecording(false);
     setAudioLevels({ left: 0, right: 0 });
     setDuration(0);
-    setMediaStream(null);
-    setAudioContext(null);
     connectionAttempts.current = 0;
     setStatusMessage('Broadcast stopped');
   };
 
-  // Add cleanup in useEffect
-  useEffect(() => {
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+  // Add these functions to handle the knob rotation
+  const handleKnobMouseDown = (e) => {
+    setIsDragging(true);
+    document.addEventListener('mousemove', handleKnobMouseMove);
+    document.addEventListener('mouseup', handleKnobMouseUp);
+  };
+
+  const handleKnobMouseMove = (e) => {
+    if (isDragging && knobRef.current) {
+      const knob = knobRef.current;
+      const rect = knob.getBoundingClientRect();
+      const center = {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+      };
+      
+      const angle = Math.atan2(e.clientY - center.y, e.clientX - center.x);
+      let degrees = angle * (180 / Math.PI) + 90;
+      if (degrees < 0) degrees += 360;
+      
+      // Limit rotation to 270 degrees (from -45 to 225 degrees)
+      const normalizedDegrees = Math.max(-45, Math.min(225, degrees));
+      const percentage = (normalizedDegrees + 45) / 270;
+      const newGain = percentage * 10; // Max gain of 10
+      
+      setGain(newGain);
+      if (gainNode.current) {
+        gainNode.current.gain.value = newGain;
       }
-    };
-  }, []);
+    }
+  };
+
+  const handleKnobMouseUp = () => {
+    setIsDragging(false);
+    document.removeEventListener('mousemove', handleKnobMouseMove);
+    document.removeEventListener('mouseup', handleKnobMouseUp);
+  };
 
   return (
     <div className={styles.broadcasterContainer}>
       <div className={styles.broadcaster}>
-        {/* header */}
         <header className={styles.broadcastHeader}>
-          <AudioControls 
-            selectedDevice={selectedDevice}
-            onDeviceSelect={setSelectedDevice}
-            showMenu={showAudioMenu}
-            onToggleMenu={() => setShowAudioMenu(!showAudioMenu)}
-            audioMenuRef={audioMenuRef}
-          />
+          <div 
+            className={styles.headerItem} 
+            onClick={() => setShowAudioMenu(!showAudioMenu)}
+          >
+            Audio
+          </div>
           
+          {showAudioMenu && (
+            <div ref={audioMenuRef} className={styles.audioMenu}>
+              <div>
+                <h4>Input Device</h4>
+                <select
+                  value={selectedDevice}
+                  onChange={(e) => setSelectedDevice(e.target.value)}
+                  className={styles.deviceSelect}
+                >
+                  {audioDevices?.map(device => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Device ${device.deviceId}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className={styles.gainControl}>
+                <h4>Input Gain</h4>
+                <input
+                  type="range"
+                  min="0"
+                  max="5"
+                  step="0.1"
+                  value={inputGain}
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value);
+                    setInputGain(value);
+                    if (gainNode.current) {
+                      gainNode.current.gain.value = value;
+                    }
+                  }}
+                  className={styles.gainSlider}
+                />
+                <div className={styles.gainValue}>{inputGain.toFixed(1)}x</div>
+              </div>
+            </div>
+          )}
+
           <div className={styles.statusIndicator}>
             <div className={styles.broadcastIconWrapper}>
               {isRecording 
@@ -446,15 +408,50 @@ const IcecastBroadcaster = () => {
           </div>
         </header>
 
-        {/* audio controls */}
+       
 
         <div className={styles.audioControls}>
           <div className={styles.controlsRow}>
-            <AudioMeter 
-              audioContext={audioContext}
-              mediaStream={mediaStream}
+            {/* Stereo Meters */}
+            <div className={styles.stereoMeterContainer}>
+              <div className={styles.meterChannel}>
+                <div className={styles.verticalMeter}>
+                  <div 
+                    className={styles.meterFill}
+                    style={{ height: `${audioLevels.left * 100}%` }}
+                  />
+                </div>
+              </div>
+              <div className={styles.meterChannel}>
+                <div className={styles.verticalMeter}>
+                  <div 
+                    className={styles.meterFill}
+                    style={{ height: `${audioLevels.right * 100}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Volume Slider */}
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={volume}
+              onChange={(e) => {
+                const value = parseFloat(e.target.value);
+                setVolume(value);
+                if (gainNode.current) {
+                  gainNode.current.gain.value = gain * value;
+                }
+              }}
+              className={styles.volumeSlider}
             />
           </div>
+          <span className={styles.statusText}>
+            {isRecording ? 'Live' : 'Ready'}
+          </span>
         </div>
 
         <div className={styles.broadcastStats}>
