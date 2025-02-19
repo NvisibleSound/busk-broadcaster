@@ -67,8 +67,6 @@ const AudioMeters = ({ audioNodes, isRecording }) => {
   }, [audioNodes]);
 
   const updateMeters = () => {
-    if (!isRecording) return;
-
     if (analyserLeft.current && analyserRight.current) {
       analyserLeft.current.getFloatTimeDomainData(dataArrayLeft.current);
       analyserRight.current.getFloatTimeDomainData(dataArrayRight.current);

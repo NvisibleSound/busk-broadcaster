@@ -427,26 +427,6 @@ const IcecastBroadcaster = () => {
                   ))}
                 </select>
               </div>
-              
-              <div className={styles.gainControl}>
-                <h4>Input Gain</h4>
-                <input
-                  type="range"
-                  min="0"
-                  max="5"
-                  step="0.1"
-                  value={inputGain}
-                  onChange={(e) => {
-                    const value = parseFloat(e.target.value);
-                    setInputGain(value);
-                    if (gainNode.current) {
-                      gainNode.current.gain.value = value;
-                    }
-                  }}
-                  className={styles.gainSlider}
-                />
-                <div className={styles.gainValue}>{inputGain.toFixed(1)}x</div>
-              </div>
             </div>
           )}
 
@@ -468,15 +448,23 @@ const IcecastBroadcaster = () => {
           </div>
         </header>
 
-        <div className={styles.mainControls}>
-          <button
-            onClick={isRecording ? stopBroadcast : startBroadcast}
-            className={`${styles.broadcastButton} ${isRecording ? styles.recording : ''}`}
-          >
-            {isRecording ? 'Stop' : 'Start'} Broadcast
-          </button>
+        {/* //BROADCASTB BUTTON */}
+        <div className={styles.buttonContainer}>
+          <div>
+            <button
+              onClick={isRecording ? stopBroadcast : startBroadcast}
+              className={`${styles.broadcastButton} ${isRecording ? styles.recording : ''}`}
+            />
+          </div>
+          
+          <div className={styles.broadcastStatus}>
+          {isRecording ? 'Stop' : 'Start'} Broadcast
+          </div>
+        </div>
+       
 
-          <div className={styles.meterAndVolume}>
+        <div className={styles.mainControls}>
+          <div className={styles.volumeContainer}>
             {console.log('Passing audio nodes:', {
               context: audioContext.current,
               source: mediaStream.current,
@@ -492,22 +480,23 @@ const IcecastBroadcaster = () => {
               }}
               isRecording={isRecording}
             />
-            
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={volume}
-              onChange={(e) => {
-                const value = parseFloat(e.target.value);
-                setVolume(value);
-                if (gainNode.current) {
-                  gainNode.current.gain.value = gain * value;
-                }
-              }}
-              className={styles.volumeSlider}
-            />
+            <div className={styles.volumeContainer}>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value={volume}
+                onChange={(e) => {
+                  const value = parseFloat(e.target.value);
+                  setVolume(value);
+                  if (gainNode.current) {
+                    gainNode.current.gain.value = gain * value;
+                  }
+                }}
+                className={styles.volumeSlider}
+              />
+            </div>
           </div>
         </div>
 

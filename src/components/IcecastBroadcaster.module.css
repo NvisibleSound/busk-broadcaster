@@ -89,6 +89,13 @@
   font-size: 12px;
 }
 
+.buttonContainer {
+  border-style: solid;
+  border-color: rgb(231, 231, 231);
+  width: 100%;
+  position: relative;
+}
+
 .buttonIcon {
   width: 16px;
   height: 16px;
@@ -166,6 +173,15 @@
   margin: 20px 0;
 }
 
+.mainControls {
+  display: flex;
+  flex-direction: row;
+  border-style: solid;
+  border-color: rgb(231, 231, 231);
+  width: 100%;
+  padding: 10px;
+}
+
 .meters {
   margin-top: 20px;
 }
@@ -241,6 +257,12 @@ button:hover {
   margin: 0 0 0.5rem 0;
   font-size: 14px;
   color: #333;
+}
+
+.volumeContainer {
+  border-style: solid;
+  padding:10px
+
 }
 
 .volumeMeter {
