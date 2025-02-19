@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { PiBroadcastThin } from "react-icons/pi";
 import { BsBroadcast } from "react-icons/bs";
 import styles from './IcecastBroadcaster.module.css';
 import { defaultServerConfig } from '../config/BroadcastConfig';
 import AudioMeters from './AudioMeters';
+import VolumeControl from './VolumeControl';
 
 const IcecastBroadcaster = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -57,46 +58,34 @@ const IcecastBroadcaster = () => {
   const [volume, setVolume] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
 
-  const [audioNodes, setAudioNodes] = useState(null);
 
   // Add a state to track when audio is ready
   const [audioReady, setAudioReady] = useState(false);
+
+  // First, create a stable ref for the audio nodes
+  const audioNodesRef = useRef({
+    context: null,
+    gainNode: null
+  });
+
+  // We now use two gain nodes:
+  // - volumeGainNode: controls the signal level for broadcasting (updated by the slider)
+  // - meterGainNode: always keeps unity gain for AudioMeters so meters are unaffected by slider changes
+  const volumeGainNode = useRef(null);
+  const meterGainNode = useRef(null);
+
+  // Add this to track our audio connections
+  const audioConnections = useRef({
+    meterChainConnected: false
+  });
+
+  const [audioNodes, setAudioNodes] = useState(null);
 
   const handleGainChange = (e) => {
     const value = parseFloat(e.target.value);
     setInputGain(value);
     if (gainNode.current) {
       gainNode.current.gain.value = value;
-    }
-  };
-
-  const calculateRMSLevel = (dataArray) => {
-    const sum = dataArray.reduce((acc, val) => acc + (val * val), 0);
-    const rms = Math.sqrt(sum / dataArray.length);
-    return Math.min(1, rms); // Normalize between 0 and 1
-  };
-
-  const updateLevels = () => {
-    if (analyserRef.current) {
-      const dataArrayLeft = new Float32Array(analyserRef.current.fftSize);
-      const dataArrayRight = new Float32Array(analyserRef.current.fftSize);
-      
-      analyserRef.current.getFloatTimeDomainData(dataArrayLeft);
-      analyserRef.current.getFloatTimeDomainData(dataArrayRight);
-
-      // Add debug logging
-      console.log('Left channel data:', dataArrayLeft[0], 'Right channel data:', dataArrayRight[0]);
-
-      const newLevels = {
-        left: calculateRMSLevel(dataArrayLeft),
-        right: calculateRMSLevel(dataArrayRight)
-      };
-      
-      // Add debug logging
-      console.log('Calculated levels:', newLevels);
-      
-      setAudioLevels(newLevels);
-      animationFrameRef.current = requestAnimationFrame(updateLevels);
     }
   };
 
@@ -275,18 +264,12 @@ const IcecastBroadcaster = () => {
   };
 
   const stopBroadcast = () => {
+    console.log('🛑 Stopping broadcast...');
     setStatusMessage('Stopping broadcast...');
     setIsConnected(false);
-    setAudioNodes(null);  // Clear audio nodes
     
     if (mediaRecorder.current?.state === 'recording') {
       mediaRecorder.current.stop();
-    }
-    
-    mediaStream.current?.getTracks().forEach(track => track.stop());
-    
-    if (audioContext.current && audioContext.current.state !== 'closed') {
-      audioContext.current.close();
     }
     
     clearInterval(durationInterval.current);
@@ -296,83 +279,46 @@ const IcecastBroadcaster = () => {
     setStatusMessage('Broadcast stopped');
   };
 
-  // Add these functions to handle the knob rotation
-  const handleKnobMouseDown = (e) => {
-    setIsDragging(true);
-    document.addEventListener('mousemove', handleKnobMouseMove);
-    document.addEventListener('mouseup', handleKnobMouseUp);
-  };
-
-  const handleKnobMouseMove = (e) => {
-    if (isDragging && knobRef.current) {
-      const knob = knobRef.current;
-      const rect = knob.getBoundingClientRect();
-      const center = {
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2
-      };
-      
-      const angle = Math.atan2(e.clientY - center.y, e.clientX - center.x);
-      let degrees = angle * (180 / Math.PI) + 90;
-      if (degrees < 0) degrees += 360;
-      
-      // Limit rotation to 270 degrees (from -45 to 225 degrees)
-      const normalizedDegrees = Math.max(-45, Math.min(225, degrees));
-      const percentage = (normalizedDegrees + 45) / 270;
-      const newGain = percentage * 10; // Max gain of 10
-      
-      setGain(newGain);
-      if (gainNode.current) {
-        gainNode.current.gain.value = newGain;
-      }
-    }
-  };
-
-  const handleKnobMouseUp = () => {
-    setIsDragging(false);
-    document.removeEventListener('mousemove', handleKnobMouseMove);
-    document.removeEventListener('mouseup', handleKnobMouseUp);
-  };
-
-  // Add this useEffect for initial audio setup
+  // Set up the initial audio chain once a device is selected
   useEffect(() => {
     const setupInitialAudio = async () => {
+      console.log('🎤 Starting audio setup...');
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             deviceId: selectedDevice ? { exact: selectedDevice } : undefined,
             channelCount: 2,
-            sampleRate: 48000
+            sampleRate: 48000,
+            autoGainControl: false,
+            echoCancellation: false,
+            noiseSuppression: false
           }
         });
         
+        console.log('🎤 Got media stream');
         mediaStream.current = stream;
-        
-        // Create audio context and nodes
         audioContext.current = new AudioContext();
         const source = audioContext.current.createMediaStreamSource(stream);
-        gainNode.current = audioContext.current.createGain();
-        const analyser = audioContext.current.createAnalyser();
-        analyserRef.current = analyser;
-        
-        // Configure analyser
-        analyserRef.current.fftSize = 2048;
-        
-        // Connect the audio graph for monitoring
-        source.connect(gainNode.current);
-        gainNode.current.connect(analyserRef.current);
-        
-        // Set initial gain value
-        if (gainNode.current) {
-          gainNode.current.gain.value = gain * volume;
-        }
 
-        // Signal that audio is ready
+        console.log('🎤 Creating gain nodes...');
+        volumeGainNode.current = audioContext.current.createGain();
+        meterGainNode.current = audioContext.current.createGain();
+        meterGainNode.current.gain.value = 1;
+        
+        console.log('🎤 Connecting audio graph...');
+        source.connect(volumeGainNode.current);
+        source.connect(meterGainNode.current);
+        
+        // Store nodes in state instead of ref
+        const nodes = {
+          context: audioContext.current,
+          gainNode: meterGainNode.current
+        };
+        console.log('🎤 Setting audio nodes:', nodes);
+        setAudioNodes(nodes);
         setAudioReady(true);
-
       } catch (error) {
-        console.error('Failed to setup initial audio:', error);
-        setStatusMessage('Failed to access audio device');
+        console.error('❌ Audio setup failed:', error);
       }
     };
 
@@ -381,22 +327,34 @@ const IcecastBroadcaster = () => {
     }
 
     return () => {
-      setAudioReady(false);
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      // Don't clean up audio nodes on effect cleanup
+    };
+  }, [selectedDevice]);
+
+  // Create memoized audio nodes object that won't change unless the nodes actually change
+  const memoizedAudioNodes = useMemo(() => ({
+    context: audioContext.current,
+    gainNode: meterGainNode.current
+  }), [audioContext.current, meterGainNode.current]);
+
+  // Modify the volume control handler to only affect the broadcast chain
+  const handleVolumeChange = (value) => {
+    console.log('🔊 Volume change:', value);
+    setVolume(value);
+    if (volumeGainNode.current) {
+      volumeGainNode.current.gain.value = value;
+    }
+  };
+
+  // Add cleanup only when component unmounts
+  useEffect(() => {
+    return () => {
       if (mediaStream.current) {
         mediaStream.current.getTracks().forEach(track => track.stop());
       }
       if (audioContext.current) {
         audioContext.current.close();
       }
-    };
-  }, [selectedDevice, gain, volume]);
-
-  useEffect(() => {
-    return () => {
-      stopBroadcast();
     };
   }, []);
 
@@ -437,9 +395,9 @@ const IcecastBroadcaster = () => {
                 : <PiBroadcastThin className={styles.broadcastIcon} size={20} />
               }
             </div>
-        
           </div>
           
+          {/* //SETTINGS BUTTON */}   
           <div 
             className={styles.headerItem}
             onClick={() => setShowSettings(!showSettings)}
@@ -462,44 +420,24 @@ const IcecastBroadcaster = () => {
           </div>
         </div>
        
-
+        {/* //MAIN CONTROLS */}
         <div className={styles.mainControls}>
-          <div className={styles.volumeContainer}>
-            {console.log('Passing audio nodes:', {
-              context: audioContext.current,
-              source: mediaStream.current,
-              analyser: analyserRef.current,
-              gainNode: gainNode.current
-            })}
-            <AudioMeters 
-              audioNodes={{
-                context: audioContext.current,
-                source: mediaStream.current,
-                analyser: analyserRef.current,
-                gainNode: gainNode.current
+          <div className={styles.meterAndVolumeContainer}>
+            <AudioMeters audioNodes={audioNodes} />
+            <VolumeControl
+              value={volume}
+              onChange={(value) => {
+                console.log('🔊 Volume change:', value);
+                setVolume(value);
+                if (volumeGainNode.current) {
+                  volumeGainNode.current.gain.value = value;
+                }
               }}
-              isRecording={isRecording}
             />
-            <div className={styles.volumeContainer}>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={volume}
-                onChange={(e) => {
-                  const value = parseFloat(e.target.value);
-                  setVolume(value);
-                  if (gainNode.current) {
-                    gainNode.current.gain.value = gain * value;
-                  }
-                }}
-                className={styles.volumeSlider}
-              />
-            </div>
           </div>
         </div>
 
+        {/* //BROADCAST STATS */} 
         <div className={styles.broadcastStats}>
           <div className={styles.statItem}>
             <span className={styles.statLabel}>Mount:</span>
