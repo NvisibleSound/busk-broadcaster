@@ -12,6 +12,11 @@ const AudioMeters = ({ audioNodes }) => {
   const animationFrameRef = useRef(null);
   const audioChainSetup = useRef(false);
 
+  // Add debug logging for renders and level changes
+  useEffect(() => {
+    console.log('🎚️ Current audio levels:', audioLevels);
+  }, [audioLevels]);
+
   const updateMeters = () => {
     if (!analyserLeft.current || !analyserRight.current) {
       console.log('📊 Analysers not ready');
@@ -22,10 +27,10 @@ const AudioMeters = ({ audioNodes }) => {
       analyserLeft.current.getFloatTimeDomainData(dataArrayLeft.current);
       analyserRight.current.getFloatTimeDomainData(dataArrayRight.current);
       
-      // Debug: Log raw audio data
-      const leftSample = dataArrayLeft.current[0];
-      const rightSample = dataArrayRight.current[0];
-      console.log('📊 Raw samples:', { left: leftSample, right: rightSample });
+      // Remove excessive debug logging
+      // const leftSample = dataArrayLeft.current[0];
+      // const rightSample = dataArrayRight.current[0];
+      // console.log('📊 Raw samples:', { left: leftSample, right: rightSample });
       
       const rmsLeft = Math.sqrt(
         dataArrayLeft.current.reduce((acc, val) => acc + val * val, 0) / dataArrayLeft.current.length
@@ -34,28 +39,29 @@ const AudioMeters = ({ audioNodes }) => {
         dataArrayRight.current.reduce((acc, val) => acc + val * val, 0) / dataArrayRight.current.length
       );
 
-      // Debug: Log RMS values
-      console.log('📊 RMS values:', { left: rmsLeft, right: rmsRight });
+      // Debug: Log only significant RMS changes
+      if (Math.abs(rmsLeft) > 0.01 || Math.abs(rmsRight) > 0.01) {
+        console.log('📊 Significant RMS values:', { left: rmsLeft, right: rmsRight });
+      }
 
       const dbLeft = 20 * Math.log10(Math.max(rmsLeft, 1e-7));
       const dbRight = 20 * Math.log10(Math.max(rmsRight, 1e-7));
 
-      // Debug: Log dB values
-      console.log('📊 dB values:', { left: dbLeft, right: dbRight });
-
       const scaleLevel = (db) => {
+        // Adjust scaling to be more visible
         const normalized = (db + 60) / 60;
-        return Math.max(0.02, Math.min(1, normalized));
+        return Math.max(0.05, Math.min(1, normalized)); // Increased minimum to 0.05 for visibility
       };
 
-      setAudioLevels({
+      // Only update state if values have changed significantly
+      const newLevels = {
         left: scaleLevel(dbLeft),
         right: scaleLevel(dbRight)
-      });
+      };
 
-      // Log only if levels change significantly
-      if (Math.random() < 0.05) { // Log ~5% of updates
-        console.log('📊 Meter levels:', audioLevels);
+      if (Math.abs(newLevels.left - audioLevels.left) > 0.01 ||
+          Math.abs(newLevels.right - audioLevels.right) > 0.01) {
+        setAudioLevels(newLevels);
       }
       
       animationFrameRef.current = requestAnimationFrame(updateMeters);
@@ -152,14 +158,25 @@ const AudioMeters = ({ audioNodes }) => {
     <div className={styles.stereoMeterContainer}>
       <div className={styles.scaleNumbers}>
         <div>0</div>
-        <div>6</div>
-        <div>12</div>
-        <div>24</div>
-        <div>40</div>
+        <div>-6</div>
+        <div>-12</div>
+        <div>-24</div>
+        <div>-40</div>
       </div>
       {['left', 'right'].map(channel => (
-        <div key={channel} className={styles.meterChannel}>
-          <div className={styles.verticalMeter}>
+        <div 
+          key={channel} 
+          className={styles.meterChannel}
+          style={{ border: '1px solid #333' }} // Add visible border for debugging
+        >
+          <div 
+            className={styles.verticalMeter}
+            style={{ 
+              height: '200px',  // Explicit height
+              width: '20px',    // Explicit width
+              backgroundColor: '#111' // Dark background to see meter
+            }}
+          >
             <div 
               className={styles.meterFill}
               style={{
@@ -167,7 +184,11 @@ const AudioMeters = ({ audioNodes }) => {
                 backgroundColor:
                   audioLevels[channel] > 0.85 ? '#ff4444' :
                   audioLevels[channel] > 0.75 ? '#ffaa00' :
-                  'rgb(0,255,0)'
+                  '#00ff00',
+                width: '100%',
+                position: 'absolute',
+                bottom: 0,
+                transition: 'height 0.1s ease-out'
               }}
             />
           </div>
