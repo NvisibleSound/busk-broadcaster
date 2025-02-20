@@ -13,9 +13,9 @@ const AudioMeters = ({ audioNodes }) => {
   const audioChainSetup = useRef(false);
 
   // Add debug logging for renders and level changes
-  useEffect(() => {
-    console.log('🎚️ Current audio levels:', audioLevels);
-  }, [audioLevels]);
+  // useEffect(() => {
+  //   console.log('🎚️ Current audio levels:', audioLevels);
+  // }, [audioLevels]);
 
   const updateMeters = () => {
     if (!analyserLeft.current || !analyserRight.current) {

@@ -1,5 +1,8 @@
 import { WebSocket, WebSocketServer } from 'ws';
 import { connect } from 'net';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const wss = new WebSocketServer({ port: 3001 });
 console.log('WebSocket server running on port 3001');
@@ -138,4 +141,20 @@ wss.on('connection', (ws) => {
 // Log any WebSocket server errors
 wss.on('error', (error) => {
   console.error('WebSocket server error:', error);
-}); 
+});
+
+
+// SEND EMAIL
+try {
+  console.log('Attempting to send test email...');
+  await sendTestEmail();
+  console.log('Test email completed');
+} catch (error) {
+  console.error('Failed to send test email:', error);
+}
+
+// Keep your existing WebSocket error handler
+wss.on('error', (error) => {
+  console.error('WebSocket server error:', error);
+});
+
