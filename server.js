@@ -18,22 +18,17 @@ wss.on('connection', (ws) => {
       console.log('Connected to Icecast');
       
       const headers = [
-        'SOURCE /ether HTTP/1.0',
+        'SOURCE /ether ICE/1.0',
         'Authorization: Basic ' + Buffer.from('source:EtherIsBetter').toString('base64'),
-        'User-Agent: BuskBroadcaster/1.0',
         'Content-Type: audio/webm;codecs=opus',
-        'Ice-Public: 1',
-        'Ice-Name: buSk',
+        'Ice-Name: buSK',
         'Ice-Description: Play music. Get Paid.',
         'Ice-URL: https://www.buskplayer.com/ether',
-        'Ice-Audio-Info: bitrate=128000;channels=2;samplerate=48000',
-        'Ice-Charset: UTF-8',
         'Ice-Genre: various',
+        'Ice-Public: 1',
+        'Ice-Audio-Info: ice-bitrate=128;ice-samplerate=48000;ice-channels=2',
         'Ice-Bitrate: 128',
-        'Ice-Username: source',
-        'Ice-Password: EtherIsBetter',
-        '',
-        ''
+        '\r\n'
       ].join('\r\n');
 
       icecast.write(headers);
@@ -75,6 +70,18 @@ wss.on('connection', (ws) => {
         console.log('Waiting for Icecast connection...');
         return;
       }
+
+      icecast.on('data', (data) => {
+        const response = data.toString();
+        console.log('Icecast response:', response);
+        
+        if (response.includes('200 OK')) {
+          console.log('Icecast connection established');
+          // Start sending audio data
+        } else if (response.includes('403')) {
+          console.error('Access forbidden - check IP restrictions');
+        }
+      });
 
       try {
         icecast.write(data);
