@@ -1,0 +1,223 @@
+# Busk Broadcaster - Cursor Rules
+
+## Project Overview
+This is a real-time audio broadcasting application that streams audio from the user's microphone to an Icecast server via WebSocket. The application consists of a React frontend and a Node.js WebSocket server that acts as a proxy between the browser and the Icecast streaming server.
+
+## Architecture
+
+### Core Components
+- **Frontend**: React application (Vite-based) running on port 3000
+- **WebSocket Server**: Node.js server running on port 8081
+- **Icecast Server**: External streaming server at 64.227.99.194:8000
+- **Audio Processing**: Web Audio API for real-time audio capture and processing
+
+### Data Flow
+```
+Browser Audio → Web Audio API → MediaRecorder → WebSocket → Node.js Server → TCP → Icecast Server
+```
+
+## NON-NEGOTIABLE FUNCTIONALITY (DO NOT MODIFY)
+
+### 1. Broadcast Button UI
+- **Location**: `src/components/IcecastBroadcaster.js` lines 418-428
+- **Functionality**: 
+  - Toggle between "Start Broadcast" and "Stop Broadcast"
+  - Visual state changes (recording vs idle)
+  - Must maintain current styling and behavior
+- **Critical**: This is the primary user interface element - do not change without explicit request
+
+### 2. Broadcast Stats Display
+- **Location**: `src/components/BroadcastStats.js`
+- **Displays**:
+  - Mount point: `/ether` (fixed)
+  - Stream time: HH:MM:SS format
+  - Listeners count
+  - Audio format: OPUS
+  - Bitrate: 128 kbps
+  - Sample rate: 48000 Hz
+  - Channels: 2
+- **Critical**: These stats are essential for monitoring broadcast status
+
+### 3. Audio Meters
+- **Location**: `src/components/AudioMeters.js`
+- **Functionality**:
+  - Real-time stereo level meters (left/right channels)
+  - Color-coded levels (green/yellow/red)
+  - RMS-based audio level calculation
+  - 200px height, 20px width per channel
+- **Critical**: Essential for audio monitoring during broadcast
+
+### 4. Volume Control
+- **Location**: `src/components/VolumeControl.js`
+- **Functionality**:
+  - Vertical slider control
+  - Click-to-position functionality
+  - Controls broadcast signal level (not monitoring level)
+- **Critical**: Primary audio level control for broadcast
+
+### 5. WebSocket Connection
+- **Location**: `server.js` lines 1-185
+- **Functionality**:
+  - WebSocket server on port 8081
+  - TCP connection to Icecast server (64.227.99.194:8000)
+  - Authentication with source:EtherIsBetter
+  - Automatic reconnection with 3-attempt limit
+  - Binary audio data forwarding
+- **Critical**: Core infrastructure - do not modify connection logic
+
+### 6. Icecast Server Configuration
+- **Location**: `src/config/BroadcastConfig.js`
+- **Settings**:
+  - Server: 64.227.99.194:8000
+  - Mount point: /ether
+  - Username: source
+  - Password: EtherIsBetter
+  - Audio format: audio/webm;codecs=opus
+  - Bitrate: 128 kbps
+- **Broadcasting**: Direct to 64.227.99.194:8000 (HTTP) - MUST use IP address
+- **Listening URLs**:
+  - HTTPS (Recommended): https://www.buskplayer.com/[mountpoint]
+  - Direct HTTP: http://64.227.99.194:8000/[mountpoint]
+  - Note: buskplayer domain forwards HTTPS to Icecast server via GoDaddy
+- **CRITICAL**: Always broadcast to IP address, never to proxy domain
+- **Critical**: Production server settings - do not change without explicit request
+
+### 7. Dynamic Source Name
+- **Location**: `src/components/IcecastBroadcaster.js` (Settings menu)
+- **Functionality**:
+  - User-configurable source name via Settings menu
+  - Default: "busk-broadcaster"
+  - Sent to server via WebSocket on connection
+  - Used in Icecast headers as Ice-Name
+  - Input disabled during active broadcast
+- **Critical**: Core customization feature - maintain functionality
+
+## WORKING FUNCTIONALITY (STABLE)
+
+### Audio Processing Chain
+- **Web Audio API Setup**: Automatic audio context creation and management
+- **Dual Gain Nodes**: Separate volume control for broadcast vs monitoring
+- **Channel Splitting**: Stereo audio processing for left/right meters
+- **MediaRecorder**: WebM/Opus encoding at 128kbps
+
+### Connection Management
+- **Auto-reconnection**: 3-attempt limit with exponential backoff
+- **Connection State Tracking**: Real-time status updates to UI
+- **Error Handling**: Comprehensive error handling and user feedback
+
+### Device Management
+- **Audio Device Selection**: Dropdown menu for input device selection
+- **Device Enumeration**: Automatic detection of available audio inputs
+- **Permission Handling**: Proper browser permission requests
+
+### Settings Management
+- **Settings Menu**: Click-to-open settings panel with source name configuration
+- **Dynamic Source Name**: User-configurable source name for Icecast headers
+- **Click Outside to Close**: Automatic menu closure when clicking outside
+- **Input Validation**: Source name input with proper state management
+
+## TECHNICAL SPECIFICATIONS
+
+### Audio Format
+- **Codec**: Opus
+- **Container**: WebM
+- **Bitrate**: 128 kbps
+- **Sample Rate**: 48000 Hz
+- **Channels**: 2 (stereo)
+
+### Network Configuration
+- **WebSocket Port**: 8081
+- **Frontend Port**: 3000
+- **Icecast Port**: 8000
+- **Protocol**: TCP for Icecast, WebSocket for browser communication
+
+### Dependencies
+- **Frontend**: React 18, Vite, Web Audio API
+- **Backend**: Node.js, WebSocket (ws), dotenv
+- **Audio**: MediaRecorder API, Web Audio API
+
+## DEVELOPMENT GUIDELINES
+
+### Code Structure
+- **Components**: Modular React components with CSS modules
+- **State Management**: React hooks (useState, useRef, useEffect)
+- **Audio Processing**: Web Audio API with proper cleanup
+- **Error Handling**: Comprehensive try-catch blocks with user feedback
+
+### Styling
+- **CSS Modules**: All components use CSS modules for styling
+- **Color Scheme**: Do not change existing color schemes
+- **Layout**: Maintain current layout structure
+- **Responsive**: Current design is desktop-focused
+
+### Performance Considerations
+- **Audio Processing**: 100ms MediaRecorder chunks for low latency
+- **Meter Updates**: RequestAnimationFrame for smooth meter updates
+- **Memory Management**: Proper cleanup of audio contexts and connections
+- **Reconnection Logic**: Exponential backoff to prevent server overload
+
+## COMMON ISSUES & SOLUTIONS
+
+### Audio Context Suspension
+- **Issue**: Browser suspends audio context
+- **Solution**: Automatic context resumption in AudioMeters component
+
+### Connection Drops
+- **Issue**: WebSocket or TCP connection failures
+- **Solution**: Automatic reconnection with attempt limiting
+
+### Audio Device Changes
+- **Issue**: Device selection not working
+- **Solution**: Proper device enumeration and permission handling
+
+## MODIFICATION RESTRICTIONS
+
+### DO NOT MODIFY:
+1. Broadcast button functionality and styling
+2. Broadcast stats display format and content
+3. Audio meter implementation and styling
+4. WebSocket server connection logic
+5. Icecast server configuration
+6. Volume control behavior
+7. Color schemes and overall layout
+
+### SAFE TO MODIFY:
+1. Error message text (but not error handling logic)
+2. Debug logging (can be added/removed)
+3. Performance optimizations (without changing functionality)
+4. Code comments and documentation
+5. Development tooling and build configuration
+
+## TESTING REQUIREMENTS
+
+### Before Any Changes:
+1. Test broadcast start/stop functionality
+2. Verify audio meters are working
+3. Check volume control responsiveness
+4. Confirm WebSocket connection stability
+5. Validate broadcast stats display
+6. Test audio device selection
+
+### After Any Changes:
+1. Full broadcast cycle test
+2. Audio quality verification
+3. Connection stability test
+4. UI responsiveness check
+5. Error handling validation
+
+## DEPLOYMENT NOTES
+
+### Production Environment:
+- **Server**: 64.227.99.194:8000 (Icecast)
+- **Authentication**: source:EtherIsBetter
+- **Mount Point**: /ether (fixed)
+- **SSL**: Not currently implemented
+
+### Development Environment:
+- **Local WebSocket**: localhost:8081
+- **Local Frontend**: localhost:3000
+- **Environment Variables**: dotenv configuration available
+
+---
+
+**IMPORTANT**: This broadcaster is a production system. Any modifications should be thoroughly tested and should not affect the core broadcasting functionality. The UI elements and connection logic are critical for the application's operation and should not be changed without explicit user request and thorough testing.

@@ -1,8 +1,8 @@
 import { WebSocketServer } from 'ws';
 import net from 'net';
 
-const wss = new WebSocketServer({ port: 3001 });
-console.log('WebSocket server started on port 3001');
+const wss = new WebSocketServer({ port: 8081 });
+console.log('WebSocket server started on port 8081');
 
 wss.on('connection', async (ws) => {
   console.log('Browser connected to WebSocket server');
@@ -11,6 +11,11 @@ wss.on('connection', async (ws) => {
   let totalBytesReceived = 0;
   let totalBytesSent = 0;
   let isFirstChunk = true;
+  let sourceName = 'Ether';
+  let description = 'sounds from the universe';
+  let mountpoint = '/ether';
+  let tags = [];
+  let contentType = 'audio/webm;codecs=opus';
 
   const setupIcecastConnection = () => {
     console.log('Setting up Icecast connection...');
@@ -20,12 +25,13 @@ wss.on('connection', async (ws) => {
       console.log('Connected to Icecast, sending headers');
       
       const headers = [
-        'SOURCE /ether HTTP/1.0',
+        `SOURCE ${mountpoint} HTTP/1.0`,
         'Authorization: Basic ' + Buffer.from('source:EtherIsBetter').toString('base64'),
-        'Content-Type: audio/webm;codecs=opus',
+        `Content-Type: ${contentType}`,
         'Ice-Public: 1',
-        'Ice-Name: buSk',
-        'Ice-Description: Play music. Get Paid.',
+        `Ice-Name: ${sourceName}`,
+        `Ice-Description: ${description}`,
+        tags.length > 0 ? `Ice-Genre: ${tags.join(', ')}` : '',
         '',
         ''
       ].join('\r\n');
@@ -62,10 +68,34 @@ wss.on('connection', async (ws) => {
   };
 
   ws.on('message', async (data) => {
+    console.log('📨 Message received, length:', data.length);
     try {
       const message = JSON.parse(data.toString());
+      console.log('📋 Parsed message:', message);
       if (message.type === 'config') {
-        console.log('Received config:', message);
+        console.log('✅ Config message received:', message);
+        // Update dynamic values if provided
+        if (message.sourceName) {
+          sourceName = message.sourceName;
+          console.log('📝 Updated sourceName to:', sourceName);
+        }
+        if (message.description) {
+          description = message.description;
+          console.log('📝 Updated description to:', description);
+        }
+        if (message.mountpoint) {
+          mountpoint = message.mountpoint;
+          console.log('📝 Updated mountpoint to:', mountpoint);
+        }
+        if (message.tags) {
+          tags = message.tags;
+          console.log('📝 Updated tags to:', tags);
+        }
+        if (message.contentType) {
+          contentType = message.contentType;
+          console.log('📝 Updated contentType to:', contentType);
+        }
+        console.log('🎯 Final values:', { sourceName, description, mountpoint, tags, contentType });
         setupIcecastConnection();
       }
     } catch (e) {

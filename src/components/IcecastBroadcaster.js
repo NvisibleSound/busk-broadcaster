@@ -20,6 +20,7 @@ const IcecastBroadcaster = () => {
   const mediaRecorder = useRef(null);
   const durationInterval = useRef(null);
   const audioMenuRef = useRef(null);
+  const settingsMenuRef = useRef(null);
   const gainNode = useRef(null);
   const analyserRef = useRef(null);
   const animationFrameRef = useRef(null);
@@ -42,9 +43,48 @@ const IcecastBroadcaster = () => {
   // Add state for server config to allow runtime updates
   const [serverConfig, setServerConfig] = useState(defaultServerConfig);
 
+  // Add state for dynamic source name (must be before broadcastStats)
+  const [sourceName, setSourceName] = useState(() => {
+    const savedArtist = localStorage.getItem('busk-broadcaster-selected-artist');
+    if (savedArtist) {
+      const artist = JSON.parse(savedArtist);
+      return artist.name || 'ether';
+    }
+    return 'ether';
+  });
+  
+  // Add state for artist selection and description with localStorage persistence
+  const [selectedArtist, setSelectedArtist] = useState(() => {
+    const saved = localStorage.getItem('busk-broadcaster-selected-artist');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [artists, setArtists] = useState([]);
+  const [description, setDescription] = useState(() => {
+    return localStorage.getItem('busk-broadcaster-description') || 'Play music. Get Paid.';
+  });
+
+  // Add state for genre/tag management
+  const [availableTags, setAvailableTags] = useState([
+    'Electronic', 'Hip-Hop', 'Rock', 'Jazz', 'Classical', 'Pop', 'Country', 'Blues',
+    'Folk', 'Reggae', 'R&B', 'Funk', 'Soul', 'Alternative', 'Indie', 'Ambient',
+    'Techno', 'House', 'Trance', 'Dubstep', 'Drum & Bass', 'Live', 'Acoustic',
+    'Instrumental', 'Vocal', 'Podcast', 'Talk Show', 'News', 'Sports', 'Comedy'
+  ]);
+  const [selectedTags, setSelectedTags] = useState(() => {
+    const saved = localStorage.getItem('busk-broadcaster-selected-tags');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [tagSearchQuery, setTagSearchQuery] = useState('');
+
+  // Add state for artist source toggle
+  const [useRealArtists, setUseRealArtists] = useState(() => {
+    const saved = localStorage.getItem('busk-broadcaster-use-real-artists');
+    return saved ? JSON.parse(saved) : false; // Default to mock artists
+  });
+
   // Add new state for broadcast stats
   const [broadcastStats, setBroadcastStats] = useState({
-    mountPoint: '/ether',
+    mountPoint: `/${sourceName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`,
     streamTime: '00:00:00',
     listeners: 0,
     audioFormat: '',
@@ -59,9 +99,129 @@ const IcecastBroadcaster = () => {
   const [volume, setVolume] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
 
-
   // Add a state to track when audio is ready
   const [audioReady, setAudioReady] = useState(false);
+
+  // Update mountpoint when source name changes
+  useEffect(() => {
+    const mountpoint = `/${sourceName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`;
+    setBroadcastStats(prev => ({ ...prev, mountPoint: mountpoint }));
+  }, [sourceName]);
+
+  // Save selected artist to localStorage
+  useEffect(() => {
+    if (selectedArtist) {
+      localStorage.setItem('busk-broadcaster-selected-artist', JSON.stringify(selectedArtist));
+    }
+  }, [selectedArtist]);
+
+  // Save description to localStorage
+  useEffect(() => {
+    localStorage.setItem('busk-broadcaster-description', description);
+  }, [description]);
+
+  // Save selected tags to localStorage
+  useEffect(() => {
+    localStorage.setItem('busk-broadcaster-selected-tags', JSON.stringify(selectedTags));
+  }, [selectedTags]);
+
+  // Save useRealArtists toggle to localStorage
+  useEffect(() => {
+    localStorage.setItem('busk-broadcaster-use-real-artists', JSON.stringify(useRealArtists));
+  }, [useRealArtists]);
+
+  // Refetch artists when toggle changes
+  useEffect(() => {
+    fetchArtists();
+  }, [useRealArtists]);
+
+  // Auto-select Ether when artists are loaded in mock mode
+  useEffect(() => {
+    if (!useRealArtists && artists.length > 0 && !selectedArtist) {
+      const etherArtist = artists.find(artist => artist.name === 'Ether');
+      if (etherArtist) {
+        setSelectedArtist(etherArtist);
+        setSourceName(etherArtist.name);
+      }
+    }
+  }, [artists, useRealArtists, selectedArtist]);
+
+  // Tag management functions
+  const toggleTag = (tag) => {
+    setSelectedTags(prev => {
+      if (prev.includes(tag)) {
+        return prev.filter(t => t !== tag);
+      } else {
+        return [...prev, tag];
+      }
+    });
+  };
+
+  const removeTag = (tag) => {
+    setSelectedTags(prev => prev.filter(t => t !== tag));
+  };
+
+  // Filter available tags based on search query
+  const filteredTags = availableTags.filter(tag => 
+    tag.toLowerCase().includes(tagSearchQuery.toLowerCase())
+  );
+
+  // Fetch artists from react-music-player API
+  const fetchArtists = async () => {
+    if (!useRealArtists) {
+      // Use hardcoded mock data
+      console.log('Using hardcoded mock artists');
+      const mockArtists = [
+        { id: 1, name: 'Ether', artistId: 'ether' },
+      ];
+      setArtists(mockArtists);
+      return;
+    }
+
+    try { 
+      // Using the same API endpoint structure as your react-music-player
+      const API_ENDPOINT = 'http://localhost:5000'; // Update this to match your react-music-player API_ENDPOINT
+      const response = await fetch(`${API_ENDPOINT}/artist/`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const artists = await response.json();
+      
+      // Transform the data to match our expected format
+      // Your API returns: [{ id, artistname, location, fileurl }]
+      // We need: [{ id, name, artistId }]
+      const transformedArtists = artists.map(artist => ({
+        id: artist.id,
+        name: artist.artistname,
+        artistId: artist.id.toString(), // Using id as artistId
+        location: artist.location,
+        fileurl: artist.fileurl
+      }));
+      
+      setArtists(transformedArtists);
+      console.log('Fetched artists from react-music-player API:', transformedArtists);
+    } catch (error) {
+      console.error('Error fetching artists from API:', error);
+      
+      // Fallback to mock data if API fails
+      console.log('Falling back to mock data');
+      const mockArtists = [
+        { id: 1, name: 'DJ Example', artistId: 'dj-example' },
+        { id: 2, name: 'Live Band', artistId: 'live-band' },
+        { id: 3, name: 'Solo Artist', artistId: 'solo-artist' },
+        { id: 4, name: 'Podcast Host', artistId: 'podcast-host' }
+      ];
+      
+      setArtists(mockArtists);
+    }
+  };
 
   // First, create a stable ref for the audio nodes
   const audioNodesRef = useRef({
@@ -96,6 +256,9 @@ const IcecastBroadcaster = () => {
       if (audioMenuRef.current && !audioMenuRef.current.contains(event.target)) {
         setShowAudioMenu(false);
       }
+      if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target)) {
+        setShowSettings(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -125,6 +288,7 @@ const IcecastBroadcaster = () => {
     };
 
     getAudioDevices();
+    fetchArtists(); // Fetch artists on component mount
 
     return () => {
       if (durationInterval.current) {
@@ -165,6 +329,7 @@ const IcecastBroadcaster = () => {
       console.log('Starting broadcast...');
       
       // Get user media stream
+      console.log('🎤 Requesting user media stream...');
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: false,
@@ -173,10 +338,12 @@ const IcecastBroadcaster = () => {
         }
       });
       
+      console.log('✅ Got media stream:', stream);
+      console.log('🎵 Audio tracks:', stream.getAudioTracks().length);
       mediaStream.current = stream;
       
       // Set up WebSocket connection
-      const wsUrl = 'ws://localhost:3001';
+      const wsUrl = 'ws://localhost:8081';
       console.log('Connecting to WebSocket:', wsUrl);
       
       wsRef.current = new WebSocket(wsUrl);
@@ -186,20 +353,96 @@ const IcecastBroadcaster = () => {
         console.log('WebSocket connected');
         setIsConnected(true);
         
-        // Create and start MediaRecorder
-        mediaRecorder.current = new MediaRecorder(stream, {
-          mimeType: 'audio/webm;codecs=opus',
-          audioBitsPerSecond: 128000
-        });
+        // Small delay to ensure connection is fully established
+        setTimeout(() => {
+          // Send broadcast configuration to server
+          const mountpoint = `/${sourceName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`;
+          const configMessage = {
+            type: 'config',
+            sourceName: sourceName,
+            description: description,
+            mountpoint: mountpoint,
+            artistId: selectedArtist?.artistId || null,
+            tags: selectedTags,
+            contentType: mimeType
+          };
+          console.log('📤 Sending broadcast config:', configMessage);
+          console.log('📤 WebSocket ready state:', wsRef.current.readyState);
+          console.log('📤 WebSocket URL:', wsRef.current.url);
+          wsRef.current.send(JSON.stringify(configMessage));
+          console.log('📤 Message sent successfully');
+        }, 100);
+        
+        // Test all available formats and choose the most compatible
+        const formats = [
+          'audio/mpeg', // MP3 - most compatible with browsers
+          'audio/mp4;codecs=mp4a.40.2',
+          'audio/mp4',
+          'audio/ogg;codecs=opus',
+          'audio/webm;codecs=opus',
+          'audio/webm',
+          'audio/ogg'
+        ];
+        
+        // Test format support more robustly
+        const supportedFormats = [];
+        for (const format of formats) {
+          try {
+            if (MediaRecorder.isTypeSupported(format)) {
+              supportedFormats.push(format);
+            }
+          } catch (e) {
+            console.log('Error testing format:', format, e);
+          }
+        }
+        
+        console.log('🎵 Available formats:', supportedFormats);
+        
+        // Try to create MediaRecorder with each format to test actual compatibility
+        let mimeType = 'audio/webm;codecs=opus'; // Default fallback
+        for (const format of supportedFormats) {
+          try {
+            const testRecorder = new MediaRecorder(stream, { mimeType: format });
+            mimeType = format;
+            console.log('✅ Successfully created MediaRecorder with:', format);
+            break;
+          } catch (e) {
+            console.log('❌ Failed to create MediaRecorder with:', format, e);
+          }
+        }
+        
+        console.log('🎵 Using audio format:', mimeType);
+        
+        try {
+          mediaRecorder.current = new MediaRecorder(stream, {
+            mimeType: mimeType,
+            audioBitsPerSecond: 128000
+          });
+          console.log('✅ MediaRecorder created successfully');
+        } catch (error) {
+          console.error('❌ Failed to create MediaRecorder:', error);
+          // Fallback to default
+          mediaRecorder.current = new MediaRecorder(stream, {
+            audioBitsPerSecond: 128000
+          });
+          console.log('🔄 Using default MediaRecorder settings');
+          mimeType = 'audio/webm;codecs=opus'; // Update mimeType for fallback
+        }
 
         mediaRecorder.current.ondataavailable = (event) => {
+          console.log('🎵 MediaRecorder data available:', event.data.size, 'bytes');
           if (wsRef.current?.readyState === WebSocket.OPEN) {
+            console.log('📤 Sending audio data to WebSocket server');
             wsRef.current.send(event.data);
+          } else {
+            console.log('❌ WebSocket not ready, cannot send audio data');
           }
         };
 
+        console.log('🎙️ Starting MediaRecorder with 100ms intervals');
         mediaRecorder.current.start(100);
         setIsRecording(true);
+        console.log('✅ MediaRecorder started, recording state:', mediaRecorder.current.state);
       };
 
       wsRef.current.onclose = () => {
@@ -221,18 +464,44 @@ const IcecastBroadcaster = () => {
   const stopBroadcast = () => {
     console.log('🛑 Stopping broadcast...');
     setStatusMessage('Stopping broadcast...');
-    setIsConnected(false);
     
+    // First stop the MediaRecorder
     if (mediaRecorder.current?.state === 'recording') {
       mediaRecorder.current.stop();
+    }
+
+    // Clean up WebSocket properly
+    if (wsRef.current) {
+      // Only try to close if the connection is still open
+      if (wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.close();
+      }
+      wsRef.current = null;
+    }
+    
+    // Stop all media tracks
+    if (mediaStream.current) {
+      mediaStream.current.getTracks().forEach(track => track.stop());
+      mediaStream.current = null;
     }
     
     clearInterval(durationInterval.current);
     setIsRecording(false);
+    setIsConnected(false);
     setDuration(0);
     connectionAttempts.current = 0;
     setStatusMessage('Broadcast stopped');
   };
+
+  // Add WebSocket error handling
+  useEffect(() => {
+    if (wsRef.current) {
+      wsRef.current.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        stopBroadcast();
+      };
+    }
+  }, []);
 
   // Set up the initial audio chain once a device is selected
   useEffect(() => {
@@ -318,7 +587,7 @@ const IcecastBroadcaster = () => {
       <div className={styles.broadcaster}>
         <header className={styles.broadcastHeader}>
           <div 
-            className={styles.headerItem} 
+            className={`${styles.headerItem} ${showAudioMenu ? styles.headerItemActive : ''}`}
             onClick={() => setShowAudioMenu(!showAudioMenu)}
           >
             Audio
@@ -354,12 +623,136 @@ const IcecastBroadcaster = () => {
           
           {/* //SETTINGS BUTTON */}   
           <div 
-            className={styles.headerItem}
+            className={`${styles.headerItem} ${showSettings ? styles.headerItemActive : ''}`}
             onClick={() => setShowSettings(!showSettings)}
           >
             Settings
           </div>
+          
+          {showSettings && (
+            <div ref={settingsMenuRef} className={styles.settingsMenu}>
+              <div>
+                <h4>Broadcast Settings</h4>
+                
+                <div className={styles.settingItem}>
+                  <label htmlFor="artistSourceToggle">Artist Source:</label>
+                  <div className={styles.toggleContainer}>
+                    <span className={!useRealArtists ? styles.toggleLabelActive : styles.toggleLabel}>Hardcoded</span>
+                    <label className={styles.toggleSwitch}>
+                      <input
+                        type="checkbox"
+                        checked={useRealArtists}
+                        onChange={(e) => setUseRealArtists(e.target.checked)}
+                        disabled={isRecording}
+                      />
+                      <span className={styles.toggleSlider}></span>
+                    </label>
+                    <span className={useRealArtists ? styles.toggleLabelActive : styles.toggleLabel}>PostgreSQL</span>
+                  </div>
+                </div>
+                
+                <div className={styles.settingItem}>
+                  <label htmlFor="artistSelect">Artist:</label>
+                  <select
+                    id="artistSelect"
+                    value={selectedArtist?.id || ''}
+                    onChange={(e) => {
+                      const artist = artists.find(a => a.id === parseInt(e.target.value));
+                      setSelectedArtist(artist);
+                      if (artist) {
+                        setSourceName(artist.name);
+                      }
+                    }}
+                    className={styles.artistSelect}
+                    disabled={isRecording}
+                  >
+                    <option value="">Select an artist...</option>
+                    {artists.map(artist => (
+                      <option key={artist.id} value={artist.id}>
+                        {artist.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className={styles.settingItem}>
+                  <label htmlFor="description">Description:</label>
+                  <input
+                    id="description"
+                    type="text"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className={styles.sourceNameInput}
+                    placeholder="Enter broadcast description"
+                    disabled={isRecording}
+                  />
+                </div>
+
+                <div className={styles.settingItem}>
+                  <label htmlFor="tagSearch">Search Genres & Tags:</label>
+                  <input
+                    id="tagSearch"
+                    type="text"
+                    value={tagSearchQuery}
+                    onChange={(e) => setTagSearchQuery(e.target.value)}
+                    className={styles.sourceNameInput}
+                    placeholder="Type to search tags..."
+                    disabled={isRecording}
+                  />
+                  
+                  {tagSearchQuery && (
+                    <div className={styles.tagSearchResults}>
+                      {filteredTags.length > 0 ? (
+                        filteredTags.map(tag => (
+                          <button
+                            key={tag}
+                            className={`${styles.tagButton} ${selectedTags.includes(tag) ? styles.tagButtonSelected : ''}`}
+                            onClick={() => toggleTag(tag)}
+                            disabled={isRecording}
+                          >
+                            {tag}
+                          </button>
+                        ))
+                      ) : (
+                        <div className={styles.noResults}>No tags found</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {selectedTags.length > 0 && (
+                  <div className={styles.settingItem}>
+                    <label>Selected Tags:</label>
+                    <div className={styles.selectedTagsContainer}>
+                      {selectedTags.map(tag => (
+                        <span key={tag} className={styles.selectedTag}>
+                          {tag}
+                          <button 
+                            onClick={() => removeTag(tag)}
+                            className={styles.removeTagButton}
+                            disabled={isRecording}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </header>
+
+        {/* //BROADCAST TITLE SECTION */}
+        <div className={styles.broadcastTitleSection}>
+          <div className={styles.artistName}>
+            {selectedArtist ? selectedArtist.name : 'Busk Broadcaster'}
+          </div>
+          <div className={styles.broadcastDescription}>
+            {description}
+          </div>
+        </div>
 
       
        

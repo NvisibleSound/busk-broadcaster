@@ -39,10 +39,10 @@ const AudioMeters = ({ audioNodes }) => {
         dataArrayRight.current.reduce((acc, val) => acc + val * val, 0) / dataArrayRight.current.length
       );
 
-      // Debug: Log only significant RMS changes
-      if (Math.abs(rmsLeft) > 0.01 || Math.abs(rmsRight) > 0.01) {
-        console.log('📊 Significant RMS values:', { left: rmsLeft, right: rmsRight });
-      }
+      // // Debug: Log only significant RMS changes
+      // if (Math.abs(rmsLeft) > 0.01 || Math.abs(rmsRight) > 0.01) {
+      //   console.log('📊 Significant RMS values:', { left: rmsLeft, right: rmsRight });
+      // }
 
       const dbLeft = 20 * Math.log10(Math.max(rmsLeft, 1e-7));
       const dbRight = 20 * Math.log10(Math.max(rmsRight, 1e-7));

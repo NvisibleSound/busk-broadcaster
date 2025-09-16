@@ -13,7 +13,7 @@ export default defineConfig({
     })
   ],
   server: {
-    port: 3000,
+    port: 3020,
     open: true, // This will automatically open your browser
     // Comment out proxy section for now
   },

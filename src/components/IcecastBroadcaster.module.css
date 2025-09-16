@@ -29,12 +29,42 @@
   font-size: 12px;
   color: #333;
   cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.headerItemActive {
+  background-color: #999;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 4px;
 }
 
 .statusIndicator {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.broadcastTitleSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.artistName {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.broadcastDescription {
+  font-size: 14px;
+  color: #666;
+  font-style: italic;
 }
 
 .broadcastIcon {
@@ -88,11 +118,12 @@
 }
 
 .broadcastButton {
-  width: 60px;
-  height: 60px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
-  border: none;
-  background-color: #2196f3;
+  border-style: solid;
+  border-color: rgb(64, 64, 64);
+  background-color: #3c99e6;
   cursor: pointer;
   position: relative;
   transition: background-color 0.3s ease;
@@ -101,33 +132,21 @@
 }
 
 .broadcastButton:hover {
-  background-color: #1976d2;
+  border-style: solid;
+  border-color: rgb(64, 64, 64);
+  background-color: #197de1;
 }
 
 .broadcastButton.recording {
-  background-color: #f44336;
+  border-style: solid;
+  border-color: rgb(64, 64, 64);
+  background-color: #d63717;
 }
 
 .broadcastButton.recording:hover {
-  background-color: #d32f2f;
-}
-
-.status-container {
-  margin: 1rem 0;
-  text-align: center;
-}
-
-.status-indicator {
-  display: inline-block;
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
-  background-color: #ff4444;
-  color: white;
-  transition: background-color 0.3s ease;
-}
-
-.status-indicator.connected {
-  background-color: #00C851;
+  border-style: solid;
+  border-color: rgb(64, 64, 64);
+  background-color: #d43b23;
 }
 
 .controls {
@@ -142,12 +161,7 @@
   border-radius: 4px;
 }
 
-.broadcast-button-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin: 20px 0;
-}
+
 
 .mainControls {
   display: flex;
@@ -155,35 +169,11 @@
   padding: 20px;
 }
 
-.meters {
-  margin-top: 20px;
-}
-
-.meter {
-  margin: 10px 0;
-}
-
-.meter-bar {
-  height: 20px;
-  background: #eee;
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.meter-fill {
-  height: 100%;
-  background: #4caf50;
-  transition: width 0.1s;
-}
-
 .duration {
   margin-top: 10px;
   font-family: monospace;
 }
 
-button:hover {
-  opacity: 0.9;
-}
 
 .debug-info {
   margin-top: 20px;
@@ -210,6 +200,57 @@ button:hover {
   box-shadow: 0 2px 5px rgba(0,0,0,0.1);
   z-index: 1000;
   min-width: 250px;
+}
+
+.settingsMenu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 1rem;
+  z-index: 1001;
+  min-width: 250px;
+  margin-top: 5px;
+}
+
+.settingItem {
+  margin-bottom: 1rem;
+}
+
+.settingItem label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 12px;
+  color: #333;
+}
+
+.sourceNameInput {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.sourceNameInput:disabled {
+  background-color: #f5f5f5;
+  color: #999;
+}
+
+.artistSelect {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+  background-color: #fff;
+}
+
+.artistSelect:disabled {
+  background-color: #f5f5f5;
+  color: #999;
 }
 
 .deviceSelect {
@@ -415,4 +456,179 @@ h4 {
   margin: 0;
   font-size: 14px;
   color: #333;
+}
+
+/* Tag Selection Styles */
+.tagSearchResults {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 8px;
+  margin-top: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #f9f9f9;
+}
+
+.noResults {
+  padding: 8px;
+  color: #666;
+  font-style: italic;
+  text-align: center;
+}
+
+.tagButton {
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid #ccc;
+  border-radius: 12px;
+  background: white;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.tagButton:hover {
+  background: #f0f0f0;
+  border-color: #999;
+}
+
+.tagButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tagButtonSelected {
+  background: #333;
+  color: white;
+  border-color: #333;
+}
+
+.tagButtonSelected:hover {
+  background: #555;
+  border-color: #555;
+}
+
+.selectedTagsContainer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #f9f9f9;
+  min-height: 32px;
+}
+
+.selectedTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: #333;
+  color: white;
+  border-radius: 12px;
+  gap: 4px;
+}
+
+.removeTagButton {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  padding: 0;
+  margin-left: 4px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.2s ease;
+}
+
+.removeTagButton:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.removeTagButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Toggle Switch Styles */
+.toggleContainer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 5px;
+}
+
+.toggleLabel {
+  font-size: 12px;
+  color: #666;
+  transition: color 0.2s ease;
+}
+
+.toggleLabelActive {
+  font-size: 12px;
+  color: #2a2a2a;
+  font-weight: bold;
+  transition: color 0.2s ease;
+}
+
+.toggleSwitch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.toggleSwitch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggleSlider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: 0.2s;
+  border-radius: 24px;
+}
+
+.toggleSlider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.2s;
+  border-radius: 50%;
+}
+
+.toggleSwitch input:checked + .toggleSlider {
+  background-color: #5a5a5a;
+}
+
+.toggleSwitch input:checked + .toggleSlider:before {
+  transform: translateX(26px);
+}
+
+.toggleSwitch input:disabled + .toggleSlider {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Stream Test</title>
+</head>
+<body>
+    <h1>Stream Test</h1>
+    <audio controls>
+        <source src="http://64.227.99.194:8000/grip-slayer" type="audio/webm;codecs=opus">
+        <source src="http://64.227.99.194:8000/grip-slayer" type="audio/webm">
+        Your browser does not support the audio element.
+    </audio>
+    
+    <h2>Alternative Test URLs:</h2>
+    <p><a href="http://64.227.99.194:8000/grip-slayer" target="_blank">Direct Stream Link</a></p>
+    
+    <h2>Browser Support Test:</h2>
+    <p>WebM Support: <span id="webm-support"></span></p>
+    <p>Opus Support: <span id="opus-support"></span></p>
+    
+    <script>
+        // Test browser support
+        const audio = document.createElement('audio');
+        document.getElementById('webm-support').textContent = audio.canPlayType('audio/webm') ? 'Yes' : 'No';
+        document.getElementById('opus-support').textContent = audio.canPlayType('audio/webm;codecs=opus') ? 'Yes' : 'No';
+    </script>
+</body>
+</html>
