@@ -1,137 +1,104 @@
-import { WebSocket, WebSocketServer } from 'ws';
-import { connect } from 'net';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import { WebSocketServer } from 'ws';
+import net from 'net';
 
 const wss = new WebSocketServer({ port: 3001 });
-console.log('WebSocket server running on port 3001');
+console.log('WebSocket server started on port 3001');
 
-wss.on('connection', (ws) => {
-  console.log('Browser connected');
-  let icecastConnected = false;
-  let reconnectAttempts = 0;
-  const MAX_RECONNECT_ATTEMPTS = 3;
-  
-  const connectToIcecast = () => {
-    const icecast = connect({
-      port: 8000,
-      host: '64.227.99.194'
-    }, () => {
-      console.log('Connected to Icecast');
+wss.on('connection', async (ws) => {
+  console.log('Browser connected to WebSocket server');
+  let icecast = null;
+  let isSourceEstablished = false;
+  let totalBytesReceived = 0;
+  let totalBytesSent = 0;
+  let isFirstChunk = true;
+
+  const setupIcecastConnection = () => {
+    console.log('Setting up Icecast connection...');
+    icecast = new net.Socket();
+    
+    icecast.connect(8000, '64.227.99.194', () => {
+      console.log('Connected to Icecast, sending headers');
       
       const headers = [
-        'SOURCE /ether ICE/1.0',
+        'SOURCE /ether HTTP/1.0',
         'Authorization: Basic ' + Buffer.from('source:EtherIsBetter').toString('base64'),
         'Content-Type: audio/webm;codecs=opus',
-        'Ice-Name: buSK',
-        'Ice-Description: Play music. Get Paid.',
-        'Ice-URL: https://www.buskplayer.com/ether',
-        'Ice-Genre: various',
         'Ice-Public: 1',
-        'Ice-Audio-Info: ice-bitrate=128;ice-samplerate=48000;ice-channels=2',
-        'Ice-Bitrate: 128',
-        '\r\n'
+        'Ice-Name: buSk',
+        'Ice-Description: Play music. Get Paid.',
+        '',
+        ''
       ].join('\r\n');
-
+      
+      console.log('Sending headers to Icecast');
       icecast.write(headers);
-    });
-
-    // Set a shorter timeout
-    icecast.setTimeout(5000);
-
-    icecast.on('timeout', () => {
-      console.log('Icecast connection timeout');
-      icecast.end();
-      tryReconnect();
     });
 
     icecast.on('data', (data) => {
       const response = data.toString();
       console.log('Icecast response:', response);
-      
       if (response.includes('200 OK')) {
-        icecastConnected = true;
-        reconnectAttempts = 0;
-        ws.send(JSON.stringify({ type: 'CONNECTED' }));
-      } else if (response.includes('401')) {
-        console.error('Authentication failed');
-        ws.send(JSON.stringify({ 
-          type: 'ERROR', 
-          message: 'Authentication failed' 
-        }));
-        icecast.end();
-      } else if (response.includes('Mountpoint /ether in use')) {
-        console.log('Mount point in use, waiting before retry...');
-        icecast.end();
-        setTimeout(tryReconnect, 2000);
+        console.log('Source connection established');
+        isSourceEstablished = true;
       }
     });
 
-    ws.on('message', (data) => {
-      if (!icecastConnected) {
-        console.log('Waiting for Icecast connection...');
-        return;
-      }
-
-      icecast.on('data', (data) => {
-        const response = data.toString();
-        console.log('Icecast response:', response);
-        
-        if (response.includes('200 OK')) {
-          console.log('Icecast connection established');
-          // Start sending audio data
-        } else if (response.includes('403')) {
-          console.error('Access forbidden - check IP restrictions');
-        }
-      });
-
-      try {
-        icecast.write(data);
-      } catch (err) {
-        console.error('Error writing to Icecast:', err);
-        tryReconnect();
-      }
-    });
-
-    icecast.on('error', (err) => {
-      console.error('Icecast connection error:', err);
-      ws.send(JSON.stringify({ type: 'ERROR', message: err.message }));
-      tryReconnect();
+    icecast.on('error', (error) => {
+      console.error('Icecast connection error:', error);
+      isSourceEstablished = false;
     });
 
     icecast.on('close', () => {
       console.log('Icecast connection closed');
-      icecastConnected = false;
-      ws.send(JSON.stringify({ type: 'DISCONNECTED' }));
+      console.log(`Total bytes received: ${totalBytesReceived}`);
+      console.log(`Total bytes sent: ${totalBytesSent}`);
+      isSourceEstablished = false;
     });
 
-    return icecast;
+    // Add drain handler
+    icecast.on('drain', () => {
+      console.log('Icecast buffer drained');
+    });
   };
 
-  const tryReconnect = () => {
-    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      console.log('Max reconnection attempts reached');
-      ws.send(JSON.stringify({ 
-        type: 'ERROR', 
-        message: 'Failed to connect after multiple attempts' 
-      }));
-      return;
-    }
-
-    reconnectAttempts++;
-    console.log(`Reconnection attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
-    setTimeout(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        connectToIcecast();
+  ws.on('message', async (data) => {
+    try {
+      const message = JSON.parse(data.toString());
+      if (message.type === 'config') {
+        console.log('Received config:', message);
+        setupIcecastConnection();
       }
-    }, 2000 * reconnectAttempts); // Increasing delay between attempts
-  };
+    } catch (e) {
+      // Not JSON, must be audio data
+      if (icecast && isSourceEstablished) {
+        totalBytesReceived += data.length;
+        
+        if (isFirstChunk) {
+          console.log('First audio chunk received:');
+          console.log('Size:', data.length);
+          console.log('First 32 bytes:', data.slice(0, 32).toString('hex'));
+          isFirstChunk = false;
+        }
 
-  let icecast = connectToIcecast();
+        try {
+          const writeSuccess = icecast.write(data);
+          totalBytesSent += data.length;
+          
+          if (!writeSuccess) {
+            console.log('Write buffer full - waiting for drain');
+          }
+        } catch (error) {
+          console.error('Error writing to Icecast:', error);
+        }
+      }
+    }
+  });
 
   ws.on('close', () => {
     console.log('Browser disconnected');
+    console.log(`Final stats:`);
+    console.log(`Total bytes received: ${totalBytesReceived}`);
+    console.log(`Total bytes sent: ${totalBytesSent}`);
     if (icecast) {
       icecast.end();
     }
@@ -141,20 +108,4 @@ wss.on('connection', (ws) => {
 // Log any WebSocket server errors
 wss.on('error', (error) => {
   console.error('WebSocket server error:', error);
-});
-
-
-// SEND EMAIL
-try {
-  console.log('Attempting to send test email...');
-  await sendTestEmail();
-  console.log('Test email completed');
-} catch (error) {
-  console.error('Failed to send test email:', error);
-}
-
-// Keep your existing WebSocket error handler
-wss.on('error', (error) => {
-  console.error('WebSocket server error:', error);
-});
-
+}); 
