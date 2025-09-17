@@ -276,7 +276,53 @@
 .volumeContainer {
   border-style: solid;
   padding:10px
+}
 
+.streamUrlsSection {
+  margin-top: 15px;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+}
+
+.streamUrlItem {
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.streamUrlItem:last-child {
+  margin-bottom: 0;
+}
+
+.streamUrlLabel {
+  font-size: 10px;
+  color: #666;
+  font-weight: 500;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.streamLink {
+  color: #197de1;
+  text-decoration: none;
+  font-size: 9px;
+  font-family: monospace;
+  background-color: #fff;
+  padding: 3px 6px;
+  border-radius: 3px;
+  border: 1px solid #ddd;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+
+.streamLink:hover {
+  text-decoration: underline;
+  background-color: #f0f8ff;
 }
 
 .volumeMeter {

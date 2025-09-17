@@ -83,7 +83,9 @@ http://localhost:3000
 **Broadcasting:**
 - **Target Server**: `64.227.99.194:8000` (HTTP)
 - **Authentication**: source:EtherIsBetter
-- **Format**: audio/webm;codecs=opus
+- **Format**: audio/mpeg
+
+Using web/opus to catchthe audio, and ffmpeg to convert to mp3 for icecast broadcasting
 
 **Listening:**
 - **HTTPS URL**: `https://www.buskplayer.com/[mountpoint]`
@@ -97,7 +99,7 @@ The buskplayer domain forwards HTTPS traffic to the Icecast server via GoDaddy, 
 - **Server**: 64.227.99.194:8000
 - **Mount Point**: /ether
 - **Authentication**: source:EtherIsBetter
-- **Format**: audio/webm;codecs=opus
+- **Format**: audio/mpeg
 
 ### Development Ports
 - **Frontend**: 3000

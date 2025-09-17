@@ -173,6 +173,10 @@ const IcecastBroadcaster = () => {
       console.log('Using hardcoded mock artists');
       const mockArtists = [
         { id: 1, name: 'Ether', artistId: 'ether' },
+        { id: 2, name: 'DJ Example', artistId: 'dj-example' },
+        { id: 3, name: 'Live Band', artistId: 'live-band' },
+        { id: 4, name: 'Solo Artist', artistId: 'solo-artist' },
+        { id: 5, name: 'Podcast Host', artistId: 'podcast-host' }
       ];
       setArtists(mockArtists);
       return;
@@ -210,16 +214,9 @@ const IcecastBroadcaster = () => {
     } catch (error) {
       console.error('Error fetching artists from API:', error);
       
-      // Fallback to mock data if API fails
-      console.log('Falling back to mock data');
-      const mockArtists = [
-        { id: 1, name: 'DJ Example', artistId: 'dj-example' },
-        { id: 2, name: 'Live Band', artistId: 'live-band' },
-        { id: 3, name: 'Solo Artist', artistId: 'solo-artist' },
-        { id: 4, name: 'Podcast Host', artistId: 'podcast-host' }
-      ];
-      
-      setArtists(mockArtists);
+      // No fallback for PostgreSQL mode - that's the point of the switch
+      console.log('PostgreSQL API failed - no fallback available');
+      setArtists([]);
     }
   };
 
@@ -374,13 +371,14 @@ const IcecastBroadcaster = () => {
         }, 100);
         
         // Test all available formats and choose the most compatible
+        // WebM/
+        // need is the most compatible format for browsers
         const formats = [
-          'audio/mpeg', // MP3 - most compatible with browsers
-          'audio/mp4;codecs=mp4a.40.2',
-          'audio/mp4',
-          'audio/ogg;codecs=opus',
-          'audio/webm;codecs=opus',
+          'audio/webm;codecs=opus', // WebM/Opus - most compatible with browsers
+          'audio/mp4;codecs=mp4a.40.2', // MP4/AAC - good browser support
+          'audio/ogg;codecs=opus', // OGG/Opus - good browser support
           'audio/webm',
+          'audio/mp4',
           'audio/ogg'
         ];
         
@@ -399,7 +397,7 @@ const IcecastBroadcaster = () => {
         console.log('🎵 Available formats:', supportedFormats);
         
         // Try to create MediaRecorder with each format to test actual compatibility
-        let mimeType = 'audio/webm;codecs=opus'; // Default fallback
+        let mimeType = 'audio/webm;codecs=opus'; // Default fallback to WebM/Opus
         for (const format of supportedFormats) {
           try {
             const testRecorder = new MediaRecorder(stream, { mimeType: format });
@@ -426,7 +424,7 @@ const IcecastBroadcaster = () => {
             audioBitsPerSecond: 128000
           });
           console.log('🔄 Using default MediaRecorder settings');
-          mimeType = 'audio/webm;codecs=opus'; // Update mimeType for fallback
+          mimeType = 'audio/webm;codecs=opus'; // Update mimeType for fallback to WebM/Opus
         }
 
         mediaRecorder.current.ondataavailable = (event) => {
@@ -791,6 +789,32 @@ const IcecastBroadcaster = () => {
           </div>      
           <div className={styles.broadcastStatus}>
           {isRecording ? 'Stop' : 'Start'} Broadcast
+          </div>
+        </div>
+
+        {/* //STREAM URLs */}
+        <div className={styles.streamUrlsSection}>
+          <div className={styles.streamUrlItem}>
+            <span className={styles.streamUrlLabel}>HTTPS Stream:</span>
+            <a 
+              href={`https://www.buskplayer.com${broadcastStats.mountPoint}`}
+              target="_blank" 
+              rel="noopener noreferrer"
+              className={styles.streamLink}
+            >
+              https://www.buskplayer.com{broadcastStats.mountPoint}
+            </a>
+          </div>
+          <div className={styles.streamUrlItem}>
+            <span className={styles.streamUrlLabel}>HTTP Stream:</span>
+            <a 
+              href={`http://64.227.99.194:8000${broadcastStats.mountPoint}`}
+              target="_blank" 
+              rel="noopener noreferrer"
+              className={styles.streamLink}
+            >
+              http://64.227.99.194:8000{broadcastStats.mountPoint}
+            </a>
           </div>
         </div>  
       </div>
