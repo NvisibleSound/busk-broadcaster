@@ -30,19 +30,19 @@
   align-items: center;
   width: 100%;
   padding: 0 8px;
-  margin: 0 0 8px 0;
+  margin: 0 0 4px 0;
   position: relative;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 4px;
   flex-shrink: 0;
 }
 
 .headerItem {
-  font-size: 11px;
+  font-size: 9px;
   color: rgb(129, 129, 129);
   cursor: pointer;
-  padding: 6px 10px;
-  border-radius: 4px;
+  padding: 3px 6px;
+  border-radius: 3px;
   transition: all 0.2s ease;
 }
 
@@ -54,8 +54,8 @@
 .headerItemActive {
   background-color: rgba(255, 255, 255, 0.1);
   color: white;
-  padding: 6px 10px;
-  border-radius: 4px;
+  padding: 3px 6px;
+  border-radius: 3px;
 }
 
 .statusIndicator {
@@ -71,21 +71,15 @@
   text-align: center;
   width: 100%;
   padding: 0 8px;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   flex-shrink: 0;
 }
 
 .artistName {
-  font-size: 16px;
-  font-weight: bold;
-  color: rgb(175, 175, 175);
-  margin-bottom: 2px;
-}
-
-.broadcastDescription {
   font-size: 12px;
-  color: rgb(129, 129, 129);
-  font-style: italic;
+  font-weight: 500;
+  color: rgb(175, 175, 175);
+  margin: 0;
 }
 
 .tabContainer {
@@ -265,36 +259,113 @@
   text-align: right;
 }
 
+.eqControls {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+  margin-top: 12px;
+  border-top: 1px solid rgba(129, 129, 129, 0.2);
+}
+
 .eqBand {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  max-width: 80px;
 }
 
-.eqBand label {
-  font-size: 11px;
-  color: rgb(129, 129, 129);
+.eqBandLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgb(201, 201, 201);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.eqBand input[type="range"] {
-  width: 100%;
-  height: 4px;
-  background: rgba(129, 129, 129, 0.3);
-  border-radius: 2px;
-  outline: none;
-  -webkit-appearance: none;
-  appearance: none;
+.eqBandFreq {
+  font-size: 9px;
+  color: rgb(129, 129, 129);
+  font-family: monospace;
 }
 
-.eqBand input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 12px;
-  height: 12px;
-  background: rgb(201, 201, 201);
-  border-radius: 50%;
+.eqSliderContainer {
+  width: 100%;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.eqSlider {
+  width: 100%;
+  height: 140px;
+  -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
+  writing-mode: bt-lr;
+  background: transparent;
+  outline: none;
   cursor: pointer;
+}
+
+.eqSlider::-webkit-slider-runnable-track {
+  width: 4px;
+  background: rgba(129, 129, 129, 0.3);
+  border-radius: 2px;
+}
+
+.eqSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 8px;
+  background: rgb(201, 201, 201);
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: -8px;
+  transition: background 0.2s ease;
+}
+
+.eqSlider::-webkit-slider-thumb:hover {
+  background: white;
+}
+
+.eqSlider::-moz-range-track {
+  width: 4px;
+  background: rgba(129, 129, 129, 0.3);
+  border-radius: 2px;
+  border: none;
+}
+
+.eqSlider::-moz-range-thumb {
+  width: 20px;
+  height: 8px;
+  background: rgb(201, 201, 201);
+  border-radius: 4px;
+  cursor: pointer;
+  border: none;
+  transition: background 0.2s ease;
+}
+
+.eqSlider::-moz-range-thumb:hover {
+  background: white;
+}
+
+.eqSlider:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.eqGainValue {
+  font-size: 10px;
+  color: rgb(201, 201, 201);
+  font-family: monospace;
+  font-weight: 500;
+  min-height: 14px;
+  text-align: center;
 }
 
 .eqBand input[type="range"]::-moz-range-thumb {
@@ -346,21 +417,21 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   width: 100%;
-  padding: 4px 0;
+  padding: 2px 0;
   flex-shrink: 0;
 }
 
 .broadcastStatus {
-  font-size: 11px;
+  font-size: 9px;
   color: rgb(201, 201, 201);
   font-weight: 500;
 }
 
 .buttonIcon {
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
   background-color: white;
   border-radius: 50%;
   position: absolute;
@@ -374,8 +445,8 @@
 }
 
 .broadcastButton {
-  width: 45px;
-  height: 45px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border-style: solid;
   border-color: rgb(64, 64, 64);
@@ -384,7 +455,7 @@
   position: relative;
   transition: background-color 0.3s ease;
   padding: 0;
-  margin: 6px 0;
+  margin: 2px 0;
 }
 
 .broadcastButton:hover {
