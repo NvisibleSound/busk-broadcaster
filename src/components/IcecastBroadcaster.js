@@ -8,7 +8,7 @@ import VolumeControl from './VolumeControl';
 import BroadcastStats from './BroadcastStats';
 // Audio plugins - can be disabled if causing issues
 // Set PLUGINS_ENABLED to false to completely disable plugin system
-const PLUGINS_ENABLED = false; // Toggle this to enable/disable plugins
+const PLUGINS_ENABLED = true; // Toggle this to enable/disable plugins
 
 const IcecastBroadcaster = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -32,6 +32,16 @@ const IcecastBroadcaster = () => {
   // Audio plugin system (optional, can be disabled)
   const pluginManagerRef = useRef(null);
   const [pluginsEnabled, setPluginsEnabled] = useState(false); // Toggle to enable/disable
+  
+  // Plugin instances
+  const [eqPlugin, setEqPlugin] = useState(null);
+  const [compressorPlugin, setCompressorPlugin] = useState(null);
+  const [reverbPlugin, setReverbPlugin] = useState(null);
+  
+  // Plugin settings
+  const [eqSettings, setEqSettings] = useState({ low: 0, mid: 0, high: 0, enabled: false });
+  const [compressorSettings, setCompressorSettings] = useState({ threshold: -24, ratio: 12, enabled: false });
+  const [reverbSettings, setReverbSettings] = useState({ roomSize: 0.3, enabled: false });
   
   // Tab system
   const [activeTab, setActiveTab] = useState('home');
@@ -555,11 +565,19 @@ const IcecastBroadcaster = () => {
           import('../utils/audioPlugins').then(pluginsModule => {
             const manager = pluginsModule.createPluginManager(audioContext.current, true);
             pluginManagerRef.current = manager;
+            
+            // Add enabled plugins to manager
+            if (eqPlugin) manager.addPlugin(eqPlugin);
+            if (compressorPlugin) manager.addPlugin(compressorPlugin);
+            if (reverbPlugin) manager.addPlugin(reverbPlugin);
+            
             console.log('🎛️ Audio plugins enabled');
           }).catch(error => {
             console.warn('⚠️ Failed to load plugins, continuing without:', error);
             pluginManagerRef.current = null;
           });
+        } else {
+          pluginManagerRef.current = null;
         }
         
         console.log('🎤 Connecting audio graph...');
@@ -575,8 +593,8 @@ const IcecastBroadcaster = () => {
           } catch (error) {
             console.error('❌ Plugin processing failed, using direct connection:', error);
             // Fallback to direct connection if plugins fail
-            source.connect(volumeGainNode.current);
-            source.connect(meterGainNode.current);
+        source.connect(volumeGainNode.current);
+        source.connect(meterGainNode.current);
           }
         } else {
           // Direct connection (no plugins) - default behavior
@@ -604,7 +622,7 @@ const IcecastBroadcaster = () => {
     return () => {
       // Don't clean up audio nodes on effect cleanup
     };
-  }, [selectedDevice]);
+  }, [selectedDevice, pluginsEnabled, eqPlugin, compressorPlugin, reverbPlugin]);
 
   // Create memoized audio nodes object that won't change unless the nodes actually change
   const memoizedAudioNodes = useMemo(() => ({
@@ -814,10 +832,22 @@ const IcecastBroadcaster = () => {
             Home
           </button>
           <button
-            className={`${styles.tab} ${activeTab === 'plugins' ? styles.tabActive : ''}`}
-            onClick={() => setActiveTab('plugins')}
+            className={`${styles.tab} ${activeTab === 'eq' ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab('eq')}
           >
-            Plugins
+            EQ
+          </button>
+          <button
+            className={`${styles.tab} ${activeTab === 'compressor' ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab('compressor')}
+          >
+            Compressor
+          </button>
+          <button
+            className={`${styles.tab} ${activeTab === 'reverb' ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab('reverb')}
+          >
+            Reverb
           </button>
         </div>
 
@@ -825,66 +855,320 @@ const IcecastBroadcaster = () => {
         <div className={styles.tabContent}>
           {activeTab === 'home' && (
             <>
-              {/* //MAIN CONTROLS */}
-              <div className={styles.mainControls}>
-                <div className={styles.meterAndVolumeContainer}>
-                  <AudioMeters audioNodes={audioNodes} />
-                  <VolumeControl
-                    value={volume}
-                    onChange={(value) => {
-                      console.log('🔊 Volume change:', value);
-                      setVolume(value);
-                      if (volumeGainNode.current) {
-                        volumeGainNode.current.gain.value = value;
-                      }
-                    }}
-                  />
-                </div>
-                <div>
-                  {/* //BROADCAST STATS */} 
-                  <BroadcastStats 
-                    isRecording={isRecording}
-                    serverConfig={serverConfig}
-                    broadcastStats={broadcastStats}
-                    setBroadcastStats={setBroadcastStats}
-                  />
-                </div>  
-              </div>   
-              {/* //BROADCAST BUTTON */}
-              <div className={styles.buttonContainer}>
-                <div>
-                  <button
-                    onClick={isRecording ? stopBroadcast : startBroadcast}
-                    className={`${styles.broadcastButton} ${isRecording ? styles.recording : ''}`}
-                  />
-                </div>      
-                <div className={styles.broadcastStatus}>
-                  {isRecording ? 'Stop' : 'Start'} Broadcast
-                </div>
-              </div>
-
-              {/* //STREAM URLs */}
-              <div className={styles.streamUrlsSection}>
-                <div className={styles.streamUrlItem}>
-                  <span className={styles.streamUrlLabel}>HTTPS Stream:</span>
-                  <a 
-                    href={`https://test.buskplayer.com${broadcastStats.mountPoint}`}
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className={styles.streamLink}
-                  >
-                    https://test.buskplayer.com{broadcastStats.mountPoint}
-                  </a>
-                </div>
-              </div>
+        {/* //MAIN CONTROLS */}
+        <div className={styles.mainControls}>
+          <div className={styles.meterAndVolumeContainer}>
+            <AudioMeters audioNodes={audioNodes} />
+            <VolumeControl
+              value={volume}
+              onChange={(value) => {
+                console.log('🔊 Volume change:', value);
+                setVolume(value);
+                if (volumeGainNode.current) {
+                  volumeGainNode.current.gain.value = value;
+                }
+              }}
+            />
+          </div>
+          <div>
+            {/* //BROADCAST STATS */} 
+            <BroadcastStats 
+              isRecording={isRecording}
+              serverConfig={serverConfig}
+              broadcastStats={broadcastStats}
+              setBroadcastStats={setBroadcastStats}
+            />
+          </div>  
+        </div>   
             </>
           )}
 
-          {activeTab === 'plugins' && (
+          {activeTab === 'eq' && (
             <div className={styles.pluginsTabContent}>
-              <p>Plugins tab - Coming soon</p>
+              {!PLUGINS_ENABLED ? (
+                <div className={styles.pluginDisabled}>
+                  <p>Plugins are currently disabled. Enable PLUGINS_ENABLED to use audio plugins.</p>
+                </div>
+              ) : (
+                <div className={styles.pluginCard}>
+                  <div className={styles.pluginCardHeader}>
+                    <h4>EQ (3-Band)</h4>
+                    <label className={styles.toggleContainer}>
+                      <span className={eqSettings.enabled ? styles.toggleLabelActive : styles.toggleLabel}>
+                        {eqSettings.enabled ? 'On' : 'Off'}
+                      </span>
+                      <label className={styles.toggleSwitch}>
+                        <input
+                          type="checkbox"
+                          checked={eqSettings.enabled}
+                          onChange={(e) => {
+                            const enabled = e.target.checked;
+                            setEqSettings(prev => ({ ...prev, enabled }));
+                            
+                            // Auto-enable plugin system when EQ is turned on
+                            if (enabled && !pluginsEnabled) {
+                              setPluginsEnabled(true);
+                            }
+                            
+                            if (enabled && !eqPlugin) {
+                              import('../utils/audioPlugins').then(module => {
+                                const eq = new module.EQPlugin();
+                                setEqPlugin(eq);
+                                if (pluginManagerRef.current) {
+                                  pluginManagerRef.current.addPlugin(eq);
+                                }
+                              });
+                            } else if (!enabled && eqPlugin) {
+                              if (pluginManagerRef.current) {
+                                pluginManagerRef.current.removePlugin('EQ');
+                              }
+                              setEqPlugin(null);
+                            }
+                          }}
+                          disabled={isRecording}
+                        />
+                        <span className={styles.toggleSlider}></span>
+                      </label>
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
           )}
+
+          {activeTab === 'compressor' && (
+            <div className={styles.pluginsTabContent}>
+              {!PLUGINS_ENABLED ? (
+                <div className={styles.pluginDisabled}>
+                  <p>Plugins are currently disabled. Enable PLUGINS_ENABLED to use audio plugins.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Plugin System Toggle */}
+                  <div className={styles.pluginSection}>
+                    <div className={styles.pluginHeader}>
+                      <h4>Plugin System</h4>
+                      <label className={styles.toggleContainer}>
+                        <span className={pluginsEnabled ? styles.toggleLabelActive : styles.toggleLabel}>
+                          {pluginsEnabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                        <label className={styles.toggleSwitch}>
+                          <input
+                            type="checkbox"
+                            checked={pluginsEnabled}
+                            onChange={(e) => setPluginsEnabled(e.target.checked)}
+                            disabled={isRecording}
+                          />
+                          <span className={styles.toggleSlider}></span>
+                        </label>
+                      </label>
+                    </div>
+                    {!pluginsEnabled && (
+                      <p className={styles.pluginNote}>Enable the plugin system to use audio effects</p>
+                    )}
+                  </div>
+
+                  {/* Compressor Plugin */}
+                  <div className={styles.pluginCard}>
+                    <div className={styles.pluginCardHeader}>
+                      <h4>Compressor</h4>
+                      <label className={styles.toggleContainer}>
+                        <span className={compressorSettings.enabled ? styles.toggleLabelActive : styles.toggleLabel}>
+                          {compressorSettings.enabled ? 'On' : 'Off'}
+                        </span>
+                        <label className={styles.toggleSwitch}>
+                          <input
+                            type="checkbox"
+                            checked={compressorSettings.enabled}
+                            onChange={(e) => {
+                              setCompressorSettings(prev => ({ ...prev, enabled: e.target.checked }));
+                              if (e.target.checked && !compressorPlugin) {
+                                import('../utils/audioPlugins').then(module => {
+                                  const comp = new module.CompressorPlugin();
+                                  comp.setThreshold(compressorSettings.threshold);
+                                  comp.setRatio(compressorSettings.ratio);
+                                  setCompressorPlugin(comp);
+                                  if (pluginManagerRef.current) {
+                                    pluginManagerRef.current.addPlugin(comp);
+                                  }
+                                });
+                              } else if (!e.target.checked && compressorPlugin) {
+                                if (pluginManagerRef.current) {
+                                  pluginManagerRef.current.removePlugin('Compressor');
+                                }
+                                setCompressorPlugin(null);
+                              }
+                            }}
+                            disabled={isRecording || !pluginsEnabled}
+                          />
+                          <span className={styles.toggleSlider}></span>
+                        </label>
+                      </label>
+                    </div>
+                    {compressorSettings.enabled && (
+                      <div className={styles.pluginControls}>
+                        <div className={styles.pluginControl}>
+                          <label>Threshold</label>
+                          <input
+                            type="range"
+                            min="-60"
+                            max="0"
+                            value={compressorSettings.threshold}
+                            onChange={(e) => {
+                              const value = parseFloat(e.target.value);
+                              setCompressorSettings(prev => ({ ...prev, threshold: value }));
+                              if (compressorPlugin) compressorPlugin.setThreshold(value);
+                            }}
+                            disabled={isRecording}
+                          />
+                          <span>{compressorSettings.threshold} dB</span>
+                        </div>
+                        <div className={styles.pluginControl}>
+                          <label>Ratio</label>
+                          <input
+                            type="range"
+                            min="1"
+                            max="20"
+                            value={compressorSettings.ratio}
+                            onChange={(e) => {
+                              const value = parseFloat(e.target.value);
+                              setCompressorSettings(prev => ({ ...prev, ratio: value }));
+                              if (compressorPlugin) compressorPlugin.setRatio(value);
+                            }}
+                            disabled={isRecording}
+                          />
+                          <span>1:{compressorSettings.ratio}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'reverb' && (
+            <div className={styles.pluginsTabContent}>
+              {!PLUGINS_ENABLED ? (
+                <div className={styles.pluginDisabled}>
+                  <p>Plugins are currently disabled. Enable PLUGINS_ENABLED to use audio plugins.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Plugin System Toggle */}
+                  <div className={styles.pluginSection}>
+                    <div className={styles.pluginHeader}>
+                      <h4>Plugin System</h4>
+                      <label className={styles.toggleContainer}>
+                        <span className={pluginsEnabled ? styles.toggleLabelActive : styles.toggleLabel}>
+                          {pluginsEnabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                        <label className={styles.toggleSwitch}>
+                          <input
+                            type="checkbox"
+                            checked={pluginsEnabled}
+                            onChange={(e) => setPluginsEnabled(e.target.checked)}
+                            disabled={isRecording}
+                          />
+                          <span className={styles.toggleSlider}></span>
+                        </label>
+                      </label>
+                    </div>
+                    {!pluginsEnabled && (
+                      <p className={styles.pluginNote}>Enable the plugin system to use audio effects</p>
+                    )}
+                  </div>
+
+                  {/* Reverb Plugin */}
+                  <div className={styles.pluginCard}>
+                    <div className={styles.pluginCardHeader}>
+                      <h4>Reverb</h4>
+                      <label className={styles.toggleContainer}>
+                        <span className={reverbSettings.enabled ? styles.toggleLabelActive : styles.toggleLabel}>
+                          {reverbSettings.enabled ? 'On' : 'Off'}
+                        </span>
+                        <label className={styles.toggleSwitch}>
+                          <input
+                            type="checkbox"
+                            checked={reverbSettings.enabled}
+                            onChange={(e) => {
+                              setReverbSettings(prev => ({ ...prev, enabled: e.target.checked }));
+                              if (e.target.checked && !reverbPlugin) {
+                                import('../utils/audioPlugins').then(module => {
+                                  const rev = new module.ReverbPlugin();
+                                  rev.setRoomSize(reverbSettings.roomSize);
+                                  setReverbPlugin(rev);
+                                  if (pluginManagerRef.current) {
+                                    pluginManagerRef.current.addPlugin(rev);
+                                  }
+                                });
+                              } else if (!e.target.checked && reverbPlugin) {
+                                if (pluginManagerRef.current) {
+                                  pluginManagerRef.current.removePlugin('Reverb');
+                                }
+                                setReverbPlugin(null);
+                              }
+                            }}
+                            disabled={isRecording || !pluginsEnabled}
+                          />
+                          <span className={styles.toggleSlider}></span>
+                        </label>
+                      </label>
+                    </div>
+                    {reverbSettings.enabled && (
+                      <div className={styles.pluginControls}>
+                        <div className={styles.pluginControl}>
+                          <label>Room Size</label>
+                          <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                            value={reverbSettings.roomSize}
+                            onChange={(e) => {
+                              const value = parseFloat(e.target.value);
+                              setReverbSettings(prev => ({ ...prev, roomSize: value }));
+                              if (reverbPlugin) reverbPlugin.setRoomSize(value);
+                            }}
+                            disabled={isRecording}
+                          />
+                          <span>{(reverbSettings.roomSize * 100).toFixed(0)}%</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* //BROADCAST BUTTON - Global (shows on all tabs) */}
+          <div className={styles.buttonContainer}>
+          <div>
+            <button
+              onClick={isRecording ? stopBroadcast : startBroadcast}
+              className={`${styles.broadcastButton} ${isRecording ? styles.recording : ''}`}
+            />
+          </div>      
+          <div className={styles.broadcastStatus}>
+          {isRecording ? 'Stop' : 'Start'} Broadcast
+          </div>
+        </div>
+
+        {/* //STREAM URLs - Global (shows on all tabs) */}
+        <div className={styles.streamUrlsSection}>
+          <div className={styles.streamUrlItem}>
+            <span className={styles.streamUrlLabel}>HTTPS Stream:</span>
+            <a 
+              href={`https://test.buskplayer.com${broadcastStats.mountPoint}`}
+              target="_blank" 
+              rel="noopener noreferrer"
+              className={styles.streamLink}
+            >
+              https://test.buskplayer.com{broadcastStats.mountPoint}
+            </a>
+          </div>
         </div>  
       </div>
     </div>

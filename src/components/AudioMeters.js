@@ -167,16 +167,8 @@ const AudioMeters = ({ audioNodes }) => {
         <div 
           key={channel} 
           className={styles.meterChannel}
-          style={{ border: '1px solid #333' }} // Add visible border for debugging
         >
-          <div 
-            className={styles.verticalMeter}
-            style={{ 
-              height: '200px',  // Explicit height
-              width: '20px',    // Explicit width
-              backgroundColor: '#111' // Dark background to see meter
-            }}
-          >
+          <div className={styles.verticalMeter}>
             <div 
               className={styles.meterFill}
               style={{
@@ -184,11 +176,7 @@ const AudioMeters = ({ audioNodes }) => {
                 backgroundColor:
                   audioLevels[channel] > 0.85 ? '#ff4444' :
                   audioLevels[channel] > 0.75 ? '#ffaa00' :
-                  '#00ff00',
-                width: '100%',
-                position: 'absolute',
-                bottom: 0,
-                transition: 'height 0.1s ease-out'
+                  '#00ff00'
               }}
             />
           </div>

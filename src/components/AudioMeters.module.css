@@ -1,8 +1,8 @@
 .stereoMeterContainer {
   display: flex;
-  gap: 2px;
-  height: 200px;
-  padding: 8px;
+  gap: 1px;
+  height: 100%;
+  padding: 6px 4px;
   background: rgba(30, 30, 30, 0.5);
   border-radius: 4px;
   position: relative;
@@ -10,17 +10,15 @@
 
 .meterChannel {
   position: relative;
-  width: 14px;
+  width: 10px;
   height: 100%;
-  background: #222;
   border-radius: 2px;
   overflow: hidden;
-  box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
 }
 
 .verticalMeter {
   position: relative;
-  width: 100%;
+  width: 40%;
   height: 100%;
   background: #1a1a1a;
 }
@@ -100,12 +98,12 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 4px 4px 4px 0;
+  padding: 8px 4px 8px 0;
   color: #888;
-  font-size: 7px;
+  font-size: 8px;
   font-family: monospace;
   text-align: right;
-  height: 200px;  /* Match meter height */
+  height: 120px;  /* Match meter height */
 }
 
 .scaleNumbers div {
