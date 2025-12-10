@@ -1,9 +1,9 @@
 .stereoMeterContainer {
   display: flex;
   gap: 2px;
-  height: 2how 00px;
+  height: 200px;
   padding: 8px;
-  background: #cecece;
+  background: rgba(30, 30, 30, 0.5);
   border-radius: 4px;
   position: relative;
 }

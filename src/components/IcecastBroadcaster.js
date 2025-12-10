@@ -6,6 +6,9 @@ import { defaultServerConfig } from '../config/BroadcastConfig';
 import AudioMeters from './AudioMeters';
 import VolumeControl from './VolumeControl';
 import BroadcastStats from './BroadcastStats';
+// Audio plugins - can be disabled if causing issues
+// Set PLUGINS_ENABLED to false to completely disable plugin system
+const PLUGINS_ENABLED = false; // Toggle this to enable/disable plugins
 
 const IcecastBroadcaster = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -25,6 +28,13 @@ const IcecastBroadcaster = () => {
   const analyserRef = useRef(null);
   const animationFrameRef = useRef(null);
   const knobRef = useRef(null);
+  
+  // Audio plugin system (optional, can be disabled)
+  const pluginManagerRef = useRef(null);
+  const [pluginsEnabled, setPluginsEnabled] = useState(false); // Toggle to enable/disable
+  
+  // Tab system
+  const [activeTab, setActiveTab] = useState('home');
 
   // Add connection state tracking
   const [isConnected, setIsConnected] = useState(false);
@@ -84,7 +94,7 @@ const IcecastBroadcaster = () => {
 
   // Add new state for broadcast stats
   const [broadcastStats, setBroadcastStats] = useState({
-    mountPoint: `/${sourceName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`,
+    mountPoint: defaultServerConfig.mountPoint,
     streamTime: '00:00:00',
     listeners: 0,
     audioFormat: '',
@@ -102,11 +112,10 @@ const IcecastBroadcaster = () => {
   // Add a state to track when audio is ready
   const [audioReady, setAudioReady] = useState(false);
 
-  // Update mountpoint when source name changes
+  // Update mountpoint from server config
   useEffect(() => {
-    const mountpoint = `/${sourceName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`;
-    setBroadcastStats(prev => ({ ...prev, mountPoint: mountpoint }));
-  }, [sourceName]);
+    setBroadcastStats(prev => ({ ...prev, mountPoint: serverConfig.mountPoint }));
+  }, [serverConfig.mountPoint]);
 
   // Save selected artist to localStorage
   useEffect(() => {
@@ -168,6 +177,20 @@ const IcecastBroadcaster = () => {
 
   // Fetch artists from react-music-player API
   const fetchArtists = async () => {
+    // API call disabled - always use hardcoded mock data
+    console.log('Using hardcoded mock artists');
+    const mockArtists = [
+      { id: 1, name: 'Ether', artistId: 'ether' },
+      { id: 2, name: 'DJ Example', artistId: 'dj-example' },
+      { id: 3, name: 'Live Band', artistId: 'live-band' },
+      { id: 4, name: 'Solo Artist', artistId: 'solo-artist' },
+      { id: 5, name: 'Podcast Host', artistId: 'podcast-host' }
+    ];
+    setArtists(mockArtists);
+    return;
+
+    // API call disabled - commented out
+    /*
     if (!useRealArtists) {
       // Use hardcoded mock data
       console.log('Using hardcoded mock artists');
@@ -218,6 +241,7 @@ const IcecastBroadcaster = () => {
       console.log('PostgreSQL API failed - no fallback available');
       setArtists([]);
     }
+    */
   };
 
   // First, create a stable ref for the audio nodes
@@ -353,7 +377,7 @@ const IcecastBroadcaster = () => {
         // Small delay to ensure connection is fully established
         setTimeout(() => {
           // Send broadcast configuration to server
-          const mountpoint = `/${sourceName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}`;
+          const mountpoint = serverConfig.mountPoint;
           const configMessage = {
             type: 'config',
             sourceName: sourceName,
@@ -428,9 +452,7 @@ const IcecastBroadcaster = () => {
         }
 
         mediaRecorder.current.ondataavailable = (event) => {
-          console.log('🎵 MediaRecorder data available:', event.data.size, 'bytes');
           if (wsRef.current?.readyState === WebSocket.OPEN) {
-            console.log('📤 Sending audio data to WebSocket server');
             wsRef.current.send(event.data);
           } else {
             console.log('❌ WebSocket not ready, cannot send audio data');
@@ -527,9 +549,40 @@ const IcecastBroadcaster = () => {
         meterGainNode.current = audioContext.current.createGain();
         meterGainNode.current.gain.value = 1;
         
+        // Initialize plugin manager if available and enabled
+        if (PLUGINS_ENABLED && pluginsEnabled) {
+          // Dynamic import for plugins (only if enabled)
+          import('../utils/audioPlugins').then(pluginsModule => {
+            const manager = pluginsModule.createPluginManager(audioContext.current, true);
+            pluginManagerRef.current = manager;
+            console.log('🎛️ Audio plugins enabled');
+          }).catch(error => {
+            console.warn('⚠️ Failed to load plugins, continuing without:', error);
+            pluginManagerRef.current = null;
+          });
+        }
+        
         console.log('🎤 Connecting audio graph...');
-        source.connect(volumeGainNode.current);
-        source.connect(meterGainNode.current);
+        
+        // Use plugins if available, otherwise connect directly
+        if (PLUGINS_ENABLED && pluginManagerRef.current && pluginsEnabled) {
+          try {
+            // Process through plugins for broadcast chain
+            pluginManagerRef.current.process(source, volumeGainNode.current);
+            // For meters, connect directly (no plugins on monitoring)
+            source.connect(meterGainNode.current);
+            console.log('🎛️ Audio routed through plugins');
+          } catch (error) {
+            console.error('❌ Plugin processing failed, using direct connection:', error);
+            // Fallback to direct connection if plugins fail
+            source.connect(volumeGainNode.current);
+            source.connect(meterGainNode.current);
+          }
+        } else {
+          // Direct connection (no plugins) - default behavior
+          source.connect(volumeGainNode.current);
+          source.connect(meterGainNode.current);
+        }
         
         // Store nodes in state instead of ref
         const nodes = {
@@ -752,70 +805,86 @@ const IcecastBroadcaster = () => {
           </div>
         </div>
 
-      
-       
-        {/* //MAIN CONTROLS */}
-        <div className={styles.mainControls}>
-          <div className={styles.meterAndVolumeContainer}>
-            <AudioMeters audioNodes={audioNodes} />
-            <VolumeControl
-              value={volume}
-              onChange={(value) => {
-                console.log('🔊 Volume change:', value);
-                setVolume(value);
-                if (volumeGainNode.current) {
-                  volumeGainNode.current.gain.value = value;
-                }
-              }}
-            />
-          </div>
-          <div>
-            {/* //BROADCAST STATS */} 
-            <BroadcastStats 
-              isRecording={isRecording}
-              serverConfig={serverConfig}
-              broadcastStats={broadcastStats}
-              setBroadcastStats={setBroadcastStats}
-            />
-          </div>  
-        </div>   
-          {/* //BROADCAST BUTTON */}
-          <div className={styles.buttonContainer}>
-          <div>
-            <button
-              onClick={isRecording ? stopBroadcast : startBroadcast}
-              className={`${styles.broadcastButton} ${isRecording ? styles.recording : ''}`}
-            />
-          </div>      
-          <div className={styles.broadcastStatus}>
-          {isRecording ? 'Stop' : 'Start'} Broadcast
-          </div>
+        {/* //TAB NAVIGATION */}
+        <div className={styles.tabContainer}>
+          <button
+            className={`${styles.tab} ${activeTab === 'home' ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab('home')}
+          >
+            Home
+          </button>
+          <button
+            className={`${styles.tab} ${activeTab === 'plugins' ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab('plugins')}
+          >
+            Plugins
+          </button>
         </div>
 
-        {/* //STREAM URLs */}
-        <div className={styles.streamUrlsSection}>
-          <div className={styles.streamUrlItem}>
-            <span className={styles.streamUrlLabel}>HTTPS Stream:</span>
-            <a 
-              href={`https://www.buskplayer.com${broadcastStats.mountPoint}`}
-              target="_blank" 
-              rel="noopener noreferrer"
-              className={styles.streamLink}
-            >
-              https://www.buskplayer.com{broadcastStats.mountPoint}
-            </a>
-          </div>
-          <div className={styles.streamUrlItem}>
-            <span className={styles.streamUrlLabel}>HTTP Stream:</span>
-            <a 
-              href={`http://64.227.99.194:8000${broadcastStats.mountPoint}`}
-              target="_blank" 
-              rel="noopener noreferrer"
-              className={styles.streamLink}
-            >
-              http://64.227.99.194:8000{broadcastStats.mountPoint}
-            </a>
-          </div>
+        {/* //TAB CONTENT */}
+        <div className={styles.tabContent}>
+          {activeTab === 'home' && (
+            <>
+              {/* //MAIN CONTROLS */}
+              <div className={styles.mainControls}>
+                <div className={styles.meterAndVolumeContainer}>
+                  <AudioMeters audioNodes={audioNodes} />
+                  <VolumeControl
+                    value={volume}
+                    onChange={(value) => {
+                      console.log('🔊 Volume change:', value);
+                      setVolume(value);
+                      if (volumeGainNode.current) {
+                        volumeGainNode.current.gain.value = value;
+                      }
+                    }}
+                  />
+                </div>
+                <div>
+                  {/* //BROADCAST STATS */} 
+                  <BroadcastStats 
+                    isRecording={isRecording}
+                    serverConfig={serverConfig}
+                    broadcastStats={broadcastStats}
+                    setBroadcastStats={setBroadcastStats}
+                  />
+                </div>  
+              </div>   
+              {/* //BROADCAST BUTTON */}
+              <div className={styles.buttonContainer}>
+                <div>
+                  <button
+                    onClick={isRecording ? stopBroadcast : startBroadcast}
+                    className={`${styles.broadcastButton} ${isRecording ? styles.recording : ''}`}
+                  />
+                </div>      
+                <div className={styles.broadcastStatus}>
+                  {isRecording ? 'Stop' : 'Start'} Broadcast
+                </div>
+              </div>
+
+              {/* //STREAM URLs */}
+              <div className={styles.streamUrlsSection}>
+                <div className={styles.streamUrlItem}>
+                  <span className={styles.streamUrlLabel}>HTTPS Stream:</span>
+                  <a 
+                    href={`https://test.buskplayer.com${broadcastStats.mountPoint}`}
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className={styles.streamLink}
+                  >
+                    https://test.buskplayer.com{broadcastStats.mountPoint}
+                  </a>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'plugins' && (
+            <div className={styles.pluginsTabContent}>
+              <p>Plugins tab - Coming soon</p>
+            </div>
+          )}
         </div>  
       </div>
     </div>

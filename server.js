@@ -1,5 +1,5 @@
 import { WebSocketServer } from 'ws';
-import net from 'net';
+import tls from 'tls';
 import { spawn } from 'child_process';
 
 const wss = new WebSocketServer({ port: 8081 });
@@ -78,11 +78,17 @@ wss.on('connection', async (ws) => {
   };
 
   const setupIcecastConnection = () => {
-    console.log('Setting up Icecast connection...');
-    icecast = new net.Socket();
+    console.log('🔌 Setting up Icecast SSL connection...');
+    console.log('🔌 Mountpoint:', mountpoint);
+    console.log('🔌 Source name:', sourceName);
+    console.log('🔌 Connecting to test.buskplayer.com:443');
     
-    icecast.connect(8000, '64.227.99.194', () => {
-      console.log('Connected to Icecast, sending headers');
+    icecast = tls.connect({
+      host: 'test.buskplayer.com',
+      port: 443,
+      rejectUnauthorized: false // Allow self-signed certificates for testing
+    }, () => {
+      console.log('✅ Connected to Icecast via SSL, sending headers');
       
       // Always send MP3 format to Icecast for compatibility
       const headers = [
@@ -93,14 +99,15 @@ wss.on('connection', async (ws) => {
         `Ice-Name: ${sourceName}`,
         `Ice-Description: ${description}`,
         tags.length > 0 ? `Ice-Genre: ${tags.join(', ')}` : '',
-        `Ice-URL: https://www.buskplayer.com${mountpoint}`,
+        `Ice-URL: https://test.buskplayer.com${mountpoint}`,
         'Ice-Audio-Info: ice-bitrate=128;ice-samplerate=48000;ice-channels=2',
         'User-Agent: busk-broadcaster/1.0',
         '',
         ''
       ].join('\r\n');
       
-      console.log('Sending headers to Icecast');
+      console.log('📤 Sending headers to Icecast:');
+      console.log(headers);
       icecast.write(headers);
     });
 
@@ -136,7 +143,6 @@ wss.on('connection', async (ws) => {
   };
 
   ws.on('message', async (data) => {
-    console.log('📨 Message received, length:', data.length);
     try {
       const message = JSON.parse(data.toString());
       console.log('📋 Parsed message:', message);

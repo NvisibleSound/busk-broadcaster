@@ -1,6 +1,6 @@
 export const defaultServerConfig = {
-  url: '64.227.99.194:8000',   // Production Icecast server
-  username: 'source',           // Default Icecast source username
-  password: 'EtherIsBetter',    // Default Icecast source password
-  mountPoint: '/ether'         // Temporarily fixed mountpoint
+  url: 'test.buskplayer.com:443',   // Docker Icecast server with SSL
+  username: 'source',               // Icecast source username
+  password: 'EtherIsBetter',       // Icecast mount password
+  mountPoint: '/ether'             // Mount point
 };
