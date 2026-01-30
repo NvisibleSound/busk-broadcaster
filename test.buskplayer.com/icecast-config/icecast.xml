@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <icecast>
     <!-- Basic Settings -->
-    <location>Earth</location>
-    <admin>icemaster@localhost</admin>
+    <location>Portland, Oregon</location>
+    <admin>bencleek@yahoo.com</admin>
     
     <!-- Server Settings -->
     <limits>
