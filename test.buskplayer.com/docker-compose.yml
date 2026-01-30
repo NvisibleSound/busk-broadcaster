@@ -5,15 +5,26 @@ services:
     image: moul/icecast
     container_name: icecast
     restart: unless-stopped
+    volumes:
+      - ./icecast-config/icecast.xml:/etc/icecast2/icecast.xml
     environment:
-      - ICECAST_SOURCE_PASSWORD=sourcepass
+      - ICECAST_SOURCE_PASSWORD=EtherIsBetter
       - ICECAST_ADMIN_PASSWORD=adminpass
       - ICECAST_PASSWORD=listenerpass
       - ICECAST_ADMIN_EMAIL=you@example.com
       - ICECAST_HOSTNAME=test.buskplayer.com
-    # volumes:
-    # - ./icecast-config:/etc/icecast2
-    # - ./icecast-logs:/var/log/icecast2
+
+  broadcaster:
+    build: ./broadcaster
+    container_name: broadcaster
+    restart: unless-stopped
+    environment:
+      - ICECAST_HOST=icecast
+      - ICECAST_PORT=8000
+      - ICECAST_PASSWORD=EtherIsBetter
+      - WS_PORT=8081
+    depends_on:
+      - icecast
 
   caddy:
     image: caddy:latest
@@ -26,6 +37,9 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
+    depends_on:
+      - icecast
+      - broadcaster
 
 volumes:
   caddy_data:

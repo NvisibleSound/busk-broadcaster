@@ -419,7 +419,10 @@ const IcecastBroadcaster = () => {
       mediaStream.current = stream;
       
       // Set up WebSocket connection
-      const wsUrl = 'ws://localhost:8081';
+      // Use localhost for development, deployed server for production
+      const wsUrl = window.location.hostname === 'localhost'
+        ? 'ws://localhost:8081'
+        : `wss://${window.location.hostname}/ws`;
       console.log('Connecting to WebSocket:', wsUrl);
       
       wsRef.current = new WebSocket(wsUrl);
