@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  icecast:
+    image: moul/icecast
+    container_name: icecast
+    restart: unless-stopped
+    environment:
+      - ICECAST_SOURCE_PASSWORD=sourcepass
+      - ICECAST_ADMIN_PASSWORD=adminpass
+      - ICECAST_PASSWORD=listenerpass
+      - ICECAST_ADMIN_EMAIL=you@example.com
+      - ICECAST_HOSTNAME=test.buskplayer.com
+    # volumes:
+    # - ./icecast-config:/etc/icecast2
+    # - ./icecast-logs:/var/log/icecast2
+
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
