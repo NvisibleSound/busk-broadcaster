@@ -27,6 +27,8 @@ const IcecastBroadcaster = () => {
   const durationInterval = useRef(null);
   const audioMenuRef = useRef(null);
   const settingsMenuRef = useRef(null);
+  const audioHeaderItemRef = useRef(null);
+  const settingsHeaderItemRef = useRef(null);
   const gainNode = useRef(null);
   const analyserRef = useRef(null);
   const animationFrameRef = useRef(null);
@@ -323,10 +325,14 @@ const IcecastBroadcaster = () => {
   // Add this effect
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (audioMenuRef.current && !audioMenuRef.current.contains(event.target)) {
+      // Don't close if clicking on the header items themselves
+      const isClickOnAudioHeader = audioHeaderItemRef.current && audioHeaderItemRef.current.contains(event.target);
+      const isClickOnSettingsHeader = settingsHeaderItemRef.current && settingsHeaderItemRef.current.contains(event.target);
+      
+      if (audioMenuRef.current && !audioMenuRef.current.contains(event.target) && !isClickOnAudioHeader) {
         setShowAudioMenu(false);
       }
-      if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target)) {
+      if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target) && !isClickOnSettingsHeader) {
         setShowSettings(false);
       }
     };
@@ -695,6 +701,7 @@ const IcecastBroadcaster = () => {
       <div className={styles.broadcaster}>
         <header className={styles.broadcastHeader}>
           <div 
+            ref={audioHeaderItemRef}
             className={`${styles.headerItem} ${showAudioMenu ? styles.headerItemActive : ''}`}
             onClick={() => setShowAudioMenu(!showAudioMenu)}
           >
@@ -731,6 +738,7 @@ const IcecastBroadcaster = () => {
           
           {/* //SETTINGS BUTTON */}   
           <div 
+            ref={settingsHeaderItemRef}
             className={`${styles.headerItem} ${showSettings ? styles.headerItemActive : ''}`}
             onClick={() => setShowSettings(!showSettings)}
           >
