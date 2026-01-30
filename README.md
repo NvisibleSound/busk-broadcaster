@@ -158,6 +158,33 @@ For production deployment, ensure:
 - Firewall allows connections to required ports
 - Icecast server credentials are secure
 
+## Test Server (test.buskplayer.com)
+
+A complete Icecast server deployment is available in the `test.buskplayer.com/` directory. This includes:
+
+- **Icecast server** with Docker
+- **WebSocket broadcaster** service for browser-based streaming
+- **Caddy** reverse proxy with automatic SSL
+
+See [test.buskplayer.com/README.md](test.buskplayer.com/README.md) for full documentation.
+
+### Quick Test
+
+```bash
+cd test.buskplayer.com
+./scripts/test.sh
+```
+
+### Server Endpoints
+
+| Purpose | URL |
+|---------|-----|
+| Listen (HTTPS) | https://test.buskplayer.com/ether |
+| Listen (direct) | http://test.buskplayer.com:8000/ether |
+| Broadcast (ffmpeg/butt) | test.buskplayer.com:8000 |
+| Broadcast (browser) | wss://test.buskplayer.com/ws |
+| Admin | https://test.buskplayer.com/admin |
+
 ## License
 
 [Add your license information here]
