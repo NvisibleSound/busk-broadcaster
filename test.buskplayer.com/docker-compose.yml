@@ -3,6 +3,8 @@ services:
     image: moul/icecast
     container_name: icecast
     restart: unless-stopped
+    ports:
+      - "8000:8000"
     volumes:
       - ./icecast-config/icecast.xml:/etc/icecast2/icecast.xml:ro
 
