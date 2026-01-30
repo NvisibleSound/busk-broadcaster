@@ -37,7 +37,7 @@
         <mount-name>/ether</mount-name>
         <password>EtherIsBetter</password>
         <max-listeners>100</max-listeners>
-        <dump-file>/var/log/icecast2/access.log</dump-file>
+        <dump-file>dump.log</dump-file>
         <burst-size>65536</burst-size>
         <fallback-mount>/fallback</fallback-mount>
         <fallback-override>1</fallback-override>
@@ -53,8 +53,8 @@
     
     <!-- Logging -->
     <logging>
-        <accesslog>/var/log/icecast2/access.log</accesslog>
-        <errorlog>/var/log/icecast2/error.log</errorlog>
+        <accesslog>access.log</accesslog>
+        <errorlog>error.log</errorlog>
         <loglevel>3</loglevel>
         <logsize>10000</logsize>
     </logging>

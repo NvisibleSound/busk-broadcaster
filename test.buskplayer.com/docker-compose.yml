@@ -1,18 +1,10 @@
-version: "3.9"
-
 services:
   icecast:
     image: moul/icecast
     container_name: icecast
     restart: unless-stopped
     volumes:
-      - ./icecast-config/icecast.xml:/etc/icecast2/icecast.xml
-    environment:
-      - ICECAST_SOURCE_PASSWORD=EtherIsBetter
-      - ICECAST_ADMIN_PASSWORD=adminpass
-      - ICECAST_PASSWORD=listenerpass
-      - ICECAST_ADMIN_EMAIL=you@example.com
-      - ICECAST_HOSTNAME=test.buskplayer.com
+      - ./icecast-config/icecast.xml:/etc/icecast2/icecast.xml:ro
 
   broadcaster:
     build: ./broadcaster
@@ -37,6 +29,9 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     depends_on:
       - icecast
       - broadcaster
