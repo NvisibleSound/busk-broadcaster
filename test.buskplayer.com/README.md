@@ -2,6 +2,8 @@
 
 Icecast streaming server for test.buskplayer.com
 
+**Server path:** `/root/busk-broadcaster/test.buskplayer.com`
+
 ## Architecture
 
 ```
