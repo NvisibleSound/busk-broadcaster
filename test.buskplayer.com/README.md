@@ -149,8 +149,33 @@ docker compose down
 docker compose up -d --build
 ```
 
+## Testing
+
+Run the test script to verify the Icecast server is working correctly:
+
+```bash
+./scripts/test.sh
+```
+
+This script will:
+1. Generate a 440Hz test tone
+2. Broadcast it to the Icecast server
+3. Capture audio from the stream
+4. Verify audio was successfully received
+
+You can customize the test with environment variables:
+
+```bash
+# Custom server
+ICECAST_HOST=my.server.com ICECAST_PORT=8000 ./scripts/test.sh
+
+# Longer broadcast duration
+BROADCAST_DURATION=30 ./scripts/test.sh
+```
+
 ## Configuration Files
 
 - `icecast-config/icecast.xml` - Icecast server configuration
 - `Caddyfile` - Caddy reverse proxy configuration
 - `broadcaster/server.js` - WebSocket to Icecast bridge
+- `scripts/test.sh` - Broadcast test script
