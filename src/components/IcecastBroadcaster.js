@@ -408,6 +408,10 @@ const IcecastBroadcaster = () => {
       console.log('🎤 Requesting user media stream...');
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
+          deviceId: selectedDevice ? { exact: selectedDevice } : undefined,
+          channelCount: 2,
+          sampleRate: 48000,
+          sampleSize: 16,
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false
@@ -433,6 +437,23 @@ const IcecastBroadcaster = () => {
         setIsConnected(true);
         
         // Small delay to ensure connection is fully established
+        const preferredMimeTypes = [
+          'audio/webm;codecs=opus',
+          'audio/webm'
+        ];
+        let mimeType = 'audio/webm;codecs=opus';
+        for (const format of preferredMimeTypes) {
+          try {
+            if (MediaRecorder.isTypeSupported(format)) {
+              mimeType = format;
+              break;
+            }
+          } catch (e) {
+            console.log('Error testing format:', format, e);
+          }
+        }
+        console.log('🎵 Using audio format:', mimeType);
+
         setTimeout(() => {
           // Send broadcast configuration to server
           const mountpoint = serverConfig.mountPoint;
@@ -451,47 +472,6 @@ const IcecastBroadcaster = () => {
           wsRef.current.send(JSON.stringify(configMessage));
           console.log('📤 Message sent successfully');
         }, 100);
-        
-        // Test all available formats and choose the most compatible
-        // WebM/
-        // need is the most compatible format for browsers
-        const formats = [
-          'audio/webm;codecs=opus', // WebM/Opus - most compatible with browsers
-          'audio/mp4;codecs=mp4a.40.2', // MP4/AAC - good browser support
-          'audio/ogg;codecs=opus', // OGG/Opus - good browser support
-          'audio/webm',
-          'audio/mp4',
-          'audio/ogg'
-        ];
-        
-        // Test format support more robustly
-        const supportedFormats = [];
-        for (const format of formats) {
-          try {
-            if (MediaRecorder.isTypeSupported(format)) {
-              supportedFormats.push(format);
-            }
-          } catch (e) {
-            console.log('Error testing format:', format, e);
-          }
-        }
-        
-        console.log('🎵 Available formats:', supportedFormats);
-        
-        // Try to create MediaRecorder with each format to test actual compatibility
-        let mimeType = 'audio/webm;codecs=opus'; // Default fallback to WebM/Opus
-        for (const format of supportedFormats) {
-          try {
-            const testRecorder = new MediaRecorder(stream, { mimeType: format });
-            mimeType = format;
-            console.log('✅ Successfully created MediaRecorder with:', format);
-            break;
-          } catch (e) {
-            console.log('❌ Failed to create MediaRecorder with:', format, e);
-          }
-        }
-        
-        console.log('🎵 Using audio format:', mimeType);
         
         try {
           mediaRecorder.current = new MediaRecorder(stream, {
@@ -531,6 +511,27 @@ const IcecastBroadcaster = () => {
 
       wsRef.current.onmessage = (event) => {
         console.log('Received message from server:', event.data);
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === 'icecast-status' && message.status === 'connected') {
+            setIsConnected(true);
+            setBroadcastStats(prev => ({
+              ...prev,
+              streamTime: '00:00:00',
+              listeners: 0,
+              audioFormat: 'OPUS',
+              bitrate: '128 kbps',
+              sampleRate: '48000 Hz',
+              channels: 2
+            }));
+            setStatusMessage('Connected to Icecast');
+          }
+          if (message.type === 'icecast-status' && message.status !== 'connected') {
+            setStatusMessage('Connecting to Icecast...');
+          }
+        } catch (e) {
+          // Non-JSON messages are ignored for UI status updates
+        }
       };
       
     } catch (error) {
@@ -921,6 +922,7 @@ const IcecastBroadcaster = () => {
             {/* //BROADCAST STATS */} 
             <BroadcastStats 
               isRecording={isRecording}
+              isConnected={isConnected}
               serverConfig={serverConfig}
               broadcastStats={broadcastStats}
               setBroadcastStats={setBroadcastStats}

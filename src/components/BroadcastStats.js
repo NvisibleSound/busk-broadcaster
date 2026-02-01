@@ -4,23 +4,22 @@ import styles from './BroadcastStats.module.css';
 const BroadcastStats = ({ isRecording, isConnected, serverConfig, broadcastStats, setBroadcastStats }) => {
   const lastConnectionState = useRef(false);
 
-  // Update stats based on connection state
+  // Update stats based on broadcast readiness
   useEffect(() => {
-    if (isRecording && isConnected) {
-      // Only update if connection state changed
-      if (lastConnectionState.current !== isConnected) {
-        setBroadcastStats(prev => ({
-          ...prev,
-          streamTime: '00:00:00',
-          listeners: 0,
-          audioFormat: 'OPUS',
-          bitrate: '128 kbps',
-          sampleRate: '48000 Hz',
-          channels: 2
-        }));
-      }
+    const isReady = isRecording && isConnected;
+    // Only update if ready state changed
+    if (isReady && lastConnectionState.current !== isReady) {
+      setBroadcastStats(prev => ({
+        ...prev,
+        streamTime: '00:00:00',
+        listeners: 0,
+        audioFormat: 'OPUS',
+        bitrate: '128 kbps',
+        sampleRate: '48000 Hz',
+        channels: 2
+      }));
     }
-    lastConnectionState.current = isConnected;
+    lastConnectionState.current = isReady;
   }, [isRecording, isConnected]);
 
   const getDisplayValue = (value, defaultValue) => {

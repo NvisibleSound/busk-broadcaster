@@ -1,5 +1,5 @@
 import { WebSocketServer } from 'ws';
-import tls from 'tls';
+import net from 'net';
 import { spawn } from 'child_process';
 
 const wss = new WebSocketServer({ port: 8081 });
@@ -57,9 +57,7 @@ wss.on('connection', async (ws) => {
         }
       });
       
-      ffmpegProcess.stderr.on('data', (data) => {
-        console.log('FFmpeg stderr:', data.toString());
-      });
+      ffmpegProcess.stderr.on('data', () => {});
       
       ffmpegProcess.on('error', (error) => {
         console.error('FFmpeg process error:', error);
@@ -78,17 +76,16 @@ wss.on('connection', async (ws) => {
   };
 
   const setupIcecastConnection = () => {
-    console.log('🔌 Setting up Icecast SSL connection...');
+    console.log('🔌 Setting up Icecast TCP connection...');
     console.log('🔌 Mountpoint:', mountpoint);
     console.log('🔌 Source name:', sourceName);
-    console.log('🔌 Connecting to test.buskplayer.com:443');
+    console.log('🔌 Connecting to test.buskplayer.com:8000');
     
-    icecast = tls.connect({
+    icecast = net.connect({
       host: 'test.buskplayer.com',
-      port: 443,
-      rejectUnauthorized: false // Allow self-signed certificates for testing
+      port: 8000
     }, () => {
-      console.log('✅ Connected to Icecast via SSL, sending headers');
+      console.log('✅ Connected to Icecast via TCP, sending headers');
       
       // Always send MP3 format to Icecast for compatibility
       const headers = [
@@ -117,8 +114,14 @@ wss.on('connection', async (ws) => {
       if (response.includes('200 OK')) {
         console.log('✅ Source connection established for mountpoint:', mountpoint);
         isSourceEstablished = true;
+        if (ws.readyState === ws.OPEN) {
+          ws.send(JSON.stringify({ type: 'icecast-status', status: 'connected' }));
+        }
       } else if (response.includes('403') || response.includes('404')) {
         console.log('❌ Icecast rejected connection:', response);
+        if (ws.readyState === ws.OPEN) {
+          ws.send(JSON.stringify({ type: 'icecast-status', status: 'rejected' }));
+        }
       } else {
         console.log('📋 Icecast response details:', response);
       }
@@ -127,6 +130,9 @@ wss.on('connection', async (ws) => {
     icecast.on('error', (error) => {
       console.error('Icecast connection error:', error);
       isSourceEstablished = false;
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({ type: 'icecast-status', status: 'error' }));
+      }
     });
 
     icecast.on('close', () => {
@@ -134,6 +140,9 @@ wss.on('connection', async (ws) => {
       console.log(`Total bytes received: ${totalBytesReceived}`);
       console.log(`Total bytes sent: ${totalBytesSent}`);
       isSourceEstablished = false;
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({ type: 'icecast-status', status: 'disconnected' }));
+      }
     });
 
     // Add drain handler
