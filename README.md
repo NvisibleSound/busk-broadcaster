@@ -101,6 +101,8 @@ The public listener URL is HTTPS via the domain. Do not distribute direct `:8000
 
 ## Development
 
+Future work planning: see `NEAR_ZERO_LATENCY_PLAN.md` for the parallel near-live monitor path.
+
 ### Available Scripts
 
 - `npm run dev` - Start frontend + WebSocket server
