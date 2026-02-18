@@ -1,14 +1,27 @@
 import { WebSocketServer } from 'ws';
 import net from 'net';
 import { spawn } from 'child_process';
+import {
+  PROTOCOL_VERSION,
+  decodeAudioPayload,
+  isAudioChunkMessage,
+  parseMessage
+} from './src/protocol/audioMessages.js';
 
 const wss = new WebSocketServer({ port: 8081 });
 console.log('WebSocket server started on port 8081');
+const MP3_BITRATE_KBPS = Number(process.env.MP3_BITRATE_KBPS || 192);
 
 wss.on('connection', async (ws) => {
   console.log('Browser connected to WebSocket server');
   let icecast = null;
   let isSourceEstablished = false;
+  let pendingAudioChunks = [];
+  let pendingBytes = 0;
+  const MAX_PENDING_BYTES = 256 * 1024;
+  let pendingEncodedChunks = [];
+  let pendingEncodedBytes = 0;
+  const MAX_PENDING_ENCODED_BYTES = 512 * 1024;
   let totalBytesReceived = 0;
   let totalBytesSent = 0;
   let isFirstChunk = true;
@@ -16,119 +29,217 @@ wss.on('connection', async (ws) => {
   let description = 'sounds from the universe';
   let mountpoint = '/ether';
   let tags = [];
-  let contentType = 'audio/webm;codecs=opus';
+  let sourceContentType = 'audio/ogg;codecs=opus';
+  let icecastContentType = sourceContentType;
+  let outputBitrateKbps = 128;
+  let shouldTranscode = false;
   let ffmpegProcess = null;
 
-  const startFFmpegConversion = () => {
-    console.log('🎵 Starting FFmpeg conversion from', contentType, 'to MP3');
-    
-    // Kill existing FFmpeg process if any
-    if (ffmpegProcess) {
-      ffmpegProcess.kill();
+  const resolveInputContainer = (type) => {
+    const normalizedType = (type || '').toLowerCase();
+    if (normalizedType.includes('webm')) {
+      return 'webm';
     }
-    
-    try {
-      // Start FFmpeg process to convert WebM/Opus to MP3
-      ffmpegProcess = spawn('ffmpeg', [
-        '-f', 'webm',           // Input format
-        '-i', 'pipe:0',         // Read from stdin
-        '-f', 'mp3',            // Output format
-        '-acodec', 'mp3',       // Audio codec
-        '-ab', '128k',          // Bitrate
-        '-ar', '48000',         // Sample rate
-        '-ac', '2',             // Channels
-        'pipe:1'                // Write to stdout
-      ], {
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-      
-      ffmpegProcess.stdout.on('data', (data) => {
-        if (icecast && isSourceEstablished) {
-          try {
-            const writeSuccess = icecast.write(data);
-            totalBytesSent += data.length;
-            
-            if (!writeSuccess) {
-              console.log('Write buffer full - waiting for drain');
-            }
-          } catch (error) {
-            console.error('Error writing converted audio to Icecast:', error);
+    if (normalizedType.includes('ogg')) {
+      return 'ogg';
+    }
+    return null;
+  };
+
+  const shouldUseTranscoder = (type) => {
+    const normalizedType = (type || '').toLowerCase();
+    // Browser Opus/WebM/Ogg streams are transcoded for broad HTML5 listener compatibility.
+    return normalizedType.includes('opus') || normalizedType.includes('webm') || normalizedType.includes('ogg');
+  };
+
+  const startTranscoderIfNeeded = () => {
+    if (!shouldTranscode || ffmpegProcess) {
+      return;
+    }
+
+    const inputContainer = resolveInputContainer(sourceContentType);
+    if (!inputContainer) {
+      console.warn('⚠️ Unknown source container for transcoding, skipping FFmpeg:', sourceContentType);
+      shouldTranscode = false;
+      icecastContentType = sourceContentType;
+      return;
+    }
+
+    console.log(`🎚️ Starting FFmpeg transcoder (${inputContainer} -> mp3 @ ${outputBitrateKbps}k)`);
+    const ffmpegArgs = [
+      '-loglevel', 'error',
+      '-fflags', 'nobuffer',
+      '-flags', 'low_delay',
+      '-f', inputContainer,
+      '-i', 'pipe:0',
+      '-vn',
+      '-acodec', 'libmp3lame',
+      '-b:a', `${outputBitrateKbps}k`,
+      '-ar', '48000',
+      '-ac', '2',
+      '-compression_level', '4',
+      '-write_xing', '0',
+      '-flush_packets', '1',
+      '-f', 'mp3',
+      'pipe:1'
+    ];
+
+    ffmpegProcess = spawn('ffmpeg', ffmpegArgs, {
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    ffmpegProcess.stdout.on('data', (encodedChunk) => {
+      if (icecast && isSourceEstablished) {
+        try {
+          const writeSuccess = icecast.write(encodedChunk);
+          totalBytesSent += encodedChunk.length;
+          if (!writeSuccess) {
+            console.log('Write buffer full - waiting for drain');
           }
+        } catch (error) {
+          console.error('Error writing transcoded audio to Icecast:', error);
         }
-      });
-      
-      ffmpegProcess.stderr.on('data', () => {});
-      
-      ffmpegProcess.on('error', (error) => {
-        console.error('FFmpeg process error:', error);
-        console.log('❌ FFmpeg not available - falling back to direct stream');
-        ffmpegProcess = null; // Disable FFmpeg conversion
-      });
-      
-      ffmpegProcess.on('close', (code) => {
-        console.log('FFmpeg process closed with code:', code);
-      });
-    } catch (error) {
-      console.error('Failed to start FFmpeg:', error);
-      console.log('❌ FFmpeg not available - falling back to direct stream');
-      ffmpegProcess = null; // Disable FFmpeg conversion
+        return;
+      }
+
+      if (pendingEncodedBytes + encodedChunk.length <= MAX_PENDING_ENCODED_BYTES) {
+        pendingEncodedChunks.push(encodedChunk);
+        pendingEncodedBytes += encodedChunk.length;
+      }
+    });
+
+    ffmpegProcess.stderr.on('data', () => {
+      // Keep FFmpeg noise off logs unless process fails.
+    });
+
+    ffmpegProcess.on('error', (error) => {
+      console.error('FFmpeg process error:', error);
+    });
+
+    ffmpegProcess.on('close', (code) => {
+      console.log('FFmpeg process closed with code:', code);
+      ffmpegProcess = null;
+    });
+  };
+
+  const writeAudioToOutput = (audioChunk) => {
+    if (shouldTranscode && ffmpegProcess?.stdin && !ffmpegProcess.stdin.destroyed) {
+      try {
+        ffmpegProcess.stdin.write(audioChunk);
+      } catch (error) {
+        console.error('Error writing audio to FFmpeg stdin:', error);
+      }
+      return;
+    }
+
+    if (icecast && isSourceEstablished) {
+      try {
+        const writeSuccess = icecast.write(audioChunk);
+        totalBytesSent += audioChunk.length;
+        if (!writeSuccess) {
+          console.log('Write buffer full - waiting for drain');
+        }
+      } catch (error) {
+        console.error('Error writing audio to Icecast:', error);
+      }
     }
   };
 
+  const enqueuePendingChunk = (audioChunk, chunkLabel) => {
+    if (shouldTranscode) {
+      // Feed FFmpeg immediately so it can parse stream headers before Icecast is ready.
+      if (ffmpegProcess?.stdin && !ffmpegProcess.stdin.destroyed) {
+        writeAudioToOutput(audioChunk);
+      }
+      return;
+    }
+
+    if (pendingBytes + audioChunk.length <= MAX_PENDING_BYTES) {
+      pendingAudioChunks.push(audioChunk);
+      pendingBytes += audioChunk.length;
+      return;
+    }
+
+    console.warn(`Dropping ${chunkLabel} chunk: pending buffer is full`);
+  };
+
   const setupIcecastConnection = () => {
-    console.log('🔌 Setting up Icecast TCP connection...');
-    console.log('🔌 Mountpoint:', mountpoint);
-    console.log('🔌 Source name:', sourceName);
-    console.log('🔌 Connecting to test.buskplayer.com:8000');
+    console.log('Setting up Icecast TCP connection...');
     
     icecast = net.connect({
       host: 'test.buskplayer.com',
       port: 8000
     }, () => {
-      console.log('✅ Connected to Icecast via TCP, sending headers');
+      console.log('Connected to Icecast TCP, sending source headers');
       
-      // Always send MP3 format to Icecast for compatibility
       const headers = [
         `SOURCE ${mountpoint} HTTP/1.0`,
         'Authorization: Basic ' + Buffer.from('source:EtherIsBetter').toString('base64'),
-        'Content-Type: audio/mpeg', // Force MP3 for Icecast
+        `Content-Type: ${icecastContentType}`,
         'Ice-Public: 1',
         `Ice-Name: ${sourceName}`,
         `Ice-Description: ${description}`,
         tags.length > 0 ? `Ice-Genre: ${tags.join(', ')}` : '',
         `Ice-URL: https://test.buskplayer.com${mountpoint}`,
-        'Ice-Audio-Info: ice-bitrate=128;ice-samplerate=48000;ice-channels=2',
+        `Ice-Audio-Info: ice-bitrate=${outputBitrateKbps};ice-samplerate=48000;ice-channels=2`,
         'User-Agent: busk-broadcaster/1.0',
         '',
         ''
       ].join('\r\n');
       
-      console.log('📤 Sending headers to Icecast:');
-      console.log(headers);
       icecast.write(headers);
     });
 
     icecast.on('data', (data) => {
       const response = data.toString();
-      console.log('Icecast response:', response);
       if (response.includes('200 OK')) {
-        console.log('✅ Source connection established for mountpoint:', mountpoint);
+        console.log('Icecast source connection established:', mountpoint);
         isSourceEstablished = true;
+        if (pendingAudioChunks.length > 0) {
+          console.log(`📦 Flushing ${pendingAudioChunks.length} buffered audio chunks (${pendingBytes} bytes)`);
+          for (const chunk of pendingAudioChunks) {
+            writeAudioToOutput(chunk);
+          }
+          pendingAudioChunks = [];
+          pendingBytes = 0;
+        }
+        if (pendingEncodedChunks.length > 0) {
+          console.log(`📦 Flushing ${pendingEncodedChunks.length} buffered transcoded chunks (${pendingEncodedBytes} bytes)`);
+          for (const encodedChunk of pendingEncodedChunks) {
+            try {
+              const writeSuccess = icecast.write(encodedChunk);
+              totalBytesSent += encodedChunk.length;
+              if (!writeSuccess) {
+                console.log('Write buffer full while flushing transcoded chunks - waiting for drain');
+              }
+            } catch (flushError) {
+              console.error('Error flushing buffered transcoded chunk to Icecast:', flushError);
+              break;
+            }
+          }
+          pendingEncodedChunks = [];
+          pendingEncodedBytes = 0;
+        }
         if (ws.readyState === ws.OPEN) {
-          ws.send(JSON.stringify({ type: 'icecast-status', status: 'connected' }));
+          ws.send(JSON.stringify({
+            type: 'icecast-status',
+            status: 'connected',
+            sourceContentType,
+            outputContentType: icecastContentType,
+            transcoding: shouldTranscode,
+            bitrateKbps: outputBitrateKbps
+          }));
         }
       } else if (response.includes('403') || response.includes('404')) {
-        console.log('❌ Icecast rejected connection:', response);
+        console.log('Icecast rejected source connection');
         if (ws.readyState === ws.OPEN) {
           ws.send(JSON.stringify({ type: 'icecast-status', status: 'rejected' }));
         }
-      } else {
-        console.log('📋 Icecast response details:', response);
       }
     });
 
     icecast.on('error', (error) => {
-      console.error('Icecast connection error:', error);
+      console.error('Icecast connection error');
       isSourceEstablished = false;
       if (ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify({ type: 'icecast-status', status: 'error' }));
@@ -145,79 +256,91 @@ wss.on('connection', async (ws) => {
       }
     });
 
-    // Add drain handler
-    icecast.on('drain', () => {
-      console.log('Icecast buffer drained');
-    });
+    icecast.on('drain', () => {});
   };
 
-  ws.on('message', async (data) => {
-    try {
-      const message = JSON.parse(data.toString());
-      console.log('📋 Parsed message:', message);
-      if (message.type === 'config') {
-        console.log('✅ Config message received:', message);
-        // Update dynamic values if provided
-        if (message.sourceName) {
-          sourceName = message.sourceName;
-          console.log('📝 Updated sourceName to:', sourceName);
-        }
-        if (message.description) {
-          description = message.description;
-          console.log('📝 Updated description to:', description);
-        }
-        if (message.mountpoint) {
-          mountpoint = message.mountpoint;
-          console.log('📝 Updated mountpoint to:', mountpoint);
-        }
-        if (message.tags) {
-          tags = message.tags;
-          console.log('📝 Updated tags to:', tags);
-        }
-        if (message.contentType) {
-          contentType = message.contentType;
-          console.log('📝 Updated contentType to:', contentType);
-        }
-        console.log('🎯 Final values:', { sourceName, description, mountpoint, tags, contentType });
-        
-        // Start FFmpeg conversion process
-        startFFmpegConversion();
-        setupIcecastConnection();
-      }
-    } catch (e) {
-      // Not JSON, must be audio data
+  ws.on('message', async (data, isBinary) => {
+    if (isBinary) {
       totalBytesReceived += data.length;
-      
+
       if (isFirstChunk) {
-        console.log('First audio chunk received:');
-        console.log('Size:', data.length);
-        console.log('First 32 bytes:', data.slice(0, 32).toString('hex'));
+        console.log('First legacy audio chunk received');
         isFirstChunk = false;
       }
 
-      if (ffmpegProcess && ffmpegProcess.stdin) {
-        // Send audio data to FFmpeg for conversion
-        try {
-          ffmpegProcess.stdin.write(data);
-        } catch (error) {
-          console.error('Error writing to FFmpeg:', error);
-        }
+      if (icecast && isSourceEstablished) {
+        writeAudioToOutput(data);
       } else {
-        // Fallback: send directly to Icecast (may not work with WebM/Opus)
-        if (icecast && isSourceEstablished) {
-          try {
-            const writeSuccess = icecast.write(data);
-            totalBytesSent += data.length;
-            
-            if (!writeSuccess) {
-              console.log('Write buffer full - waiting for drain');
-            }
-          } catch (error) {
-            console.error('Error writing to Icecast:', error);
-          }
-        }
+        enqueuePendingChunk(data, 'legacy audio');
       }
+      return;
     }
+
+    const rawMessage = typeof data === 'string' ? data : data.toString();
+    const message = parseMessage(rawMessage);
+    if (!message) {
+      console.warn('⚠️ Dropping unrecognized text message');
+      return;
+    }
+
+    if (typeof message.v === 'number' && message.v !== PROTOCOL_VERSION) {
+      console.warn('⚠️ Protocol version mismatch:', message.v, '(expected', PROTOCOL_VERSION + ')');
+    }
+
+    if (message.type === 'config') {
+      console.log('Config message received');
+      // Update dynamic values if provided
+      if (message.sourceName) {
+        sourceName = message.sourceName;
+      }
+      if (message.description) {
+        description = message.description;
+      }
+      if (message.mountpoint) {
+        mountpoint = message.mountpoint;
+      }
+      if (message.tags) {
+        tags = message.tags;
+      }
+      if (message.contentType) {
+        sourceContentType = message.contentType;
+      }
+
+      if (typeof sourceContentType !== 'string' || sourceContentType.length === 0) {
+        console.warn('⚠️ Missing content type from client, defaulting to audio/ogg;codecs=opus');
+        sourceContentType = 'audio/ogg;codecs=opus';
+      }
+      shouldTranscode = shouldUseTranscoder(sourceContentType);
+      icecastContentType = shouldTranscode ? 'audio/mpeg' : sourceContentType;
+      outputBitrateKbps = shouldTranscode ? MP3_BITRATE_KBPS : 128;
+      pendingAudioChunks = [];
+      pendingBytes = 0;
+      pendingEncodedChunks = [];
+      pendingEncodedBytes = 0;
+      startTranscoderIfNeeded();
+      console.log('Output mode:', shouldTranscode ? 'ffmpeg transcoding (mp3)' : 'direct passthrough');
+      setupIcecastConnection();
+      return;
+    }
+
+    if (isAudioChunkMessage(message)) {
+      const chunkBuffer = decodeAudioPayload(message.payload);
+      totalBytesReceived += chunkBuffer.length;
+
+      if (isFirstChunk) {
+        console.log('First structured audio chunk received');
+        isFirstChunk = false;
+      }
+
+      if (icecast && isSourceEstablished) {
+        writeAudioToOutput(chunkBuffer);
+      } else {
+        enqueuePendingChunk(chunkBuffer, 'structured audio');
+      }
+      return;
+    }
+
+    console.warn('⚠️ Unsupported message type:', message.type);
   });
 
   ws.on('close', () => {
@@ -226,15 +349,15 @@ wss.on('connection', async (ws) => {
     console.log(`Total bytes received: ${totalBytesReceived}`);
     console.log(`Total bytes sent: ${totalBytesSent}`);
     
-    // Clean up FFmpeg process
-    if (ffmpegProcess) {
-      ffmpegProcess.stdin.end();
-      ffmpegProcess.kill();
-      ffmpegProcess = null;
-    }
-    
     if (icecast) {
       icecast.end();
+    }
+    if (ffmpegProcess) {
+      if (ffmpegProcess.stdin && !ffmpegProcess.stdin.destroyed) {
+        ffmpegProcess.stdin.end();
+      }
+      ffmpegProcess.kill();
+      ffmpegProcess = null;
     }
   });
 });

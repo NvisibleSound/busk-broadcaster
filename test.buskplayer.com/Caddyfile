@@ -1,13 +1,15 @@
 test.buskplayer.com {
-    encode gzip
-
     # WebSocket for broadcasting
     handle /ws {
-        reverse_proxy broadcaster:8081
+        reverse_proxy broadcaster:8081 {
+            flush_interval -1
+        }
     }
 
     # Icecast for streaming
     handle {
-        reverse_proxy icecast:8000
+        reverse_proxy icecast:8000 {
+            flush_interval -1
+        }
     }
 }

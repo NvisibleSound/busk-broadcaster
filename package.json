@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 3000",
+    "dev": "sh -c 'EXISTING_PID=$(lsof -tiTCP:8081 -sTCP:LISTEN | head -n 1); if [ -n \"$EXISTING_PID\" ]; then echo \"Killing existing process on 8081 (PID: $EXISTING_PID)\"; kill \"$EXISTING_PID\"; fi; node server.js & SERVER_PID=$!; trap \"kill $SERVER_PID\" EXIT INT TERM; vite --port 3000'",
+    "dev:client": "vite --port 3000",
     "build": "vite build",
     "start": "vite --port 3020",
     "server": "node server.js",

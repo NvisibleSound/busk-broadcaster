@@ -13,8 +13,9 @@ A real-time audio broadcasting application that streams audio from your micropho
 
 ## Technical Specifications
 
-- **Audio Format**: WebM container with Opus codec
-- **Bitrate**: 128 kbps
+- **Ingest Format (browser -> server)**: WebM/Opus (MediaRecorder)
+- **Listener Format (Icecast output)**: MP3 (`audio/mpeg`)
+- **Bitrate**: 192 kbps listener output (default)
 - **Sample Rate**: 48 kHz
 - **Channels**: Stereo (2 channels)
 - **Streaming Protocol**: WebSocket → TCP → Icecast
@@ -52,19 +53,13 @@ npm install
 
 ### Running the Application
 
-1. **Start the WebSocket Server** (in one terminal):
-```bash
-node server.js
-```
-The server will start on port 8081 and connect to the Icecast server.
-
-2. **Start the Frontend** (in another terminal):
+1. **Start app + WebSocket server**:
 ```bash
 npm run dev
 ```
-The React application will start on port 3000.
+This starts Vite on port 3000 and the WebSocket server on port 8081 in one command.
 
-3. **Open your browser** and navigate to:
+2. **Open your browser** and navigate to:
 ```
 http://localhost:3000
 ```
@@ -83,15 +78,13 @@ http://localhost:3000
 **Broadcasting:**
 - **Target Server**: `64.227.99.194:8000` (HTTP)
 - **Authentication**: source:EtherIsBetter
-- **Format**: audio/mpeg
-
-Using web/opus to catchthe audio, and ffmpeg to convert to mp3 for icecast broadcasting
+- **Browser Ingest**: `audio/webm;codecs=opus`
 
 **Listening:**
-- **HTTPS URL**: `https://www.buskplayer.com/[mountpoint]`
-- **Direct HTTP**: `http://64.227.99.194:8000/[mountpoint]`
+- **Public URL (HTTPS only)**: `https://test.buskplayer.com/[mountpoint]`
+- **Output Format**: `audio/mpeg`
 
-The buskplayer domain forwards HTTPS traffic to the Icecast server via GoDaddy, providing secure access for listeners while broadcasting goes directly to the IP address.
+The public listener URL is HTTPS via the domain. Do not distribute direct `:8000` HTTP links.
 
 ## Configuration
 
@@ -110,7 +103,9 @@ The buskplayer domain forwards HTTPS traffic to the Icecast server via GoDaddy, 
 
 ### Available Scripts
 
-- `npm run dev` - Start development server
+- `npm run dev` - Start frontend + WebSocket server
+- `npm run dev:client` - Start frontend only
+- `npm run server` - Start WebSocket server only
 - `npm run build` - Build for production
 - `npm run preview` - Preview production build
 - `npm run lint` - Run ESLint
@@ -119,6 +114,12 @@ The buskplayer domain forwards HTTPS traffic to the Icecast server via GoDaddy, 
 
 ```
 src/
+├── audio/
+│   ├── capture/
+│   │   ├── Capture.js            # Capture interface
+│   │   └── MediaRecorderCapture.js # MediaRecorder implementation
+│   └── transport/
+│       └── WebSocketTransport.js # WebSocket transport module
 ├── components/
 │   ├── IcecastBroadcaster.js    # Main broadcasting component
 │   ├── AudioMeters.js           # Real-time audio level meters
@@ -126,7 +127,9 @@ src/
 │   └── VolumeControl.js         # Volume control slider
 ├── config/
 │   └── BroadcastConfig.js       # Server configuration
-└── App.jsx                      # Main application component
+├── protocol/
+│   └── audioMessages.js         # Audio/config message protocol helpers
+└── App.js                       # Main application component
 
 server.js                        # WebSocket server
 ```
@@ -142,6 +145,14 @@ server.js                        # WebSocket server
 3. **Audio Device Not Working**: Ensure you've granted microphone permissions and selected the correct input device.
 
 4. **WebSocket Connection Failed**: Verify that the WebSocket server is running on port 8081 and not blocked by firewall.
+
+5. **Listener count increases but no sound**:
+- Opening the stream URL can still register a listener even if playback is paused/muted.
+- Verify stream transport with:
+  ```bash
+  curl -sS -D - "https://test.buskplayer.com/ether" --range 0-512 -o /dev/null
+  ```
+  Expected header: `content-type: audio/mpeg`.
 
 ### Browser Compatibility
 
@@ -180,7 +191,6 @@ cd test.buskplayer.com
 | Purpose | URL |
 |---------|-----|
 | Listen (HTTPS) | https://test.buskplayer.com/ether |
-| Listen (direct) | http://test.buskplayer.com:8000/ether |
 | Broadcast (ffmpeg/butt) | test.buskplayer.com:8000 |
 | Broadcast (browser) | wss://test.buskplayer.com/ws |
 | Admin | https://test.buskplayer.com/admin |

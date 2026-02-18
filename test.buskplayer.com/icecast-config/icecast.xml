@@ -8,11 +8,11 @@
     <limits>
         <clients>100</clients>
         <sources>2</sources>
-        <queue-size>524288</queue-size>
+        <queue-size>65536</queue-size>
         <client-timeout>30</client-timeout>
         <header-timeout>15</header-timeout>
         <source-timeout>10</source-timeout>
-        <burst-on-connect>1</burst-on-connect>
+        <burst-on-connect>0</burst-on-connect>
     </limits>
     
     <!-- Authentication -->
@@ -38,11 +38,10 @@
         <password>EtherIsBetter</password>
         <max-listeners>100</max-listeners>
         <dump-file>dump.log</dump-file>
-        <burst-size>65536</burst-size>
+        <burst-size>8192</burst-size>
         <fallback-mount>/fallback</fallback-mount>
         <fallback-override>1</fallback-override>
         <fallback-when-full>1</fallback-when-full>
-        <intro>/usr/share/icecast2/web/intro.mp3</intro>
         <hidden>0</hidden>
         <public>1</public>
         <stream-name>Ether</stream-name>

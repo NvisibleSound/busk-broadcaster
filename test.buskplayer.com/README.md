@@ -181,3 +181,43 @@ BROADCAST_DURATION=30 ./scripts/test.sh
 - `Caddyfile` - Caddy reverse proxy configuration
 - `broadcaster/server.js` - WebSocket to Icecast bridge
 - `scripts/test.sh` - Broadcast test script
+
+## Low-Latency Mode
+
+To keep listener delay as low as possible for browser streams:
+
+1. **Icecast (`icecast-config/icecast.xml`)**
+   - Set `<burst-on-connect>0</burst-on-connect>`
+   - Keep `<queue-size>` small (e.g. `65536`)
+   - Keep mount `<burst-size>` small (e.g. `8192`)
+   - Remove mount `<intro>` for live streams
+
+2. **Caddy (`Caddyfile`)**
+   - Do not apply gzip encoding to the stream path
+   - Use `flush_interval -1` on `reverse_proxy` for stream and websocket routes
+
+3. **Broadcaster server**
+   - Use FFmpeg transcoding for browser WebM/Opus ingest when listener compatibility is required
+   - Current stable listener output is MP3 (`audio/mpeg`)
+   - Keep encoder settings tuned for low delay and avoid large internal buffering
+
+### Stable Baseline
+
+- Browser ingest: `audio/webm;codecs=opus`
+- Icecast listener output: `audio/mpeg`
+- Default MP3 bitrate: `192 kbps`
+
+### Apply Changes
+
+After any latency-related config edit:
+
+```bash
+docker compose up -d --build
+docker compose restart
+```
+
+Then verify with:
+
+```bash
+curl -sS -D - "https://test.buskplayer.com/ether" --max-time 3 -o /dev/null
+```

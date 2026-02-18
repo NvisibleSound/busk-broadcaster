@@ -9,6 +9,8 @@ import BroadcastStats from './BroadcastStats';
 import EQ from './EQ';
 import Compressor from './Compressor';
 import Reverb from './Reverb';
+import MediaRecorderCapture from '../audio/capture/MediaRecorderCapture';
+import WebSocketTransport from '../audio/transport/WebSocketTransport';
 // Audio plugins - can be disabled if causing issues
 // Set PLUGINS_ENABLED to false to completely disable plugin system
 const PLUGINS_ENABLED = true; // Toggle this to enable/disable plugins
@@ -23,7 +25,7 @@ const IcecastBroadcaster = () => {
 
   const audioContext = useRef(null);
   const mediaStream = useRef(null);
-  const mediaRecorder = useRef(null);
+  const captureRef = useRef(null);
   const durationInterval = useRef(null);
   const audioMenuRef = useRef(null);
   const settingsMenuRef = useRef(null);
@@ -95,8 +97,8 @@ const IcecastBroadcaster = () => {
   // Add status message state
   const [statusMessage, setStatusMessage] = useState('');
 
-  // Rename ws to wsRef to avoid shadowing
-  const wsRef = useRef(null);
+  const transportRef = useRef(null);
+  const audioSequenceRef = useRef(0);
 
   const [showAudioMenu, setShowAudioMenu] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -403,124 +405,98 @@ const IcecastBroadcaster = () => {
   const startBroadcast = async () => {
     try {
       console.log('Starting broadcast...');
-      
-      // Get user media stream
-      console.log('🎤 Requesting user media stream...');
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          deviceId: selectedDevice ? { exact: selectedDevice } : undefined,
-          channelCount: 2,
-          sampleRate: 48000,
-          sampleSize: 16,
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false
-        }
-      });
-      
-      console.log('✅ Got media stream:', stream);
-      console.log('🎵 Audio tracks:', stream.getAudioTracks().length);
-      mediaStream.current = stream;
-      
+
+      const preferredMimeTypes = [
+        'audio/ogg;codecs=opus',
+        'audio/ogg',
+        'audio/webm;codecs=opus',
+        'audio/webm'
+      ];
+      const requestedMimeType = MediaRecorderCapture.resolveMimeType(preferredMimeTypes);
+      console.log('🎵 Using audio format:', requestedMimeType);
+
       // Set up WebSocket connection
       // Use localhost for development, deployed server for production
       const wsUrl = window.location.hostname === 'localhost'
         ? 'ws://localhost:8081'
         : `wss://${window.location.hostname}/ws`;
       console.log('Connecting to WebSocket:', wsUrl);
-      
-      wsRef.current = new WebSocket(wsUrl);
-      wsRef.current.binaryType = 'arraybuffer';
 
-      wsRef.current.onopen = () => {
-        console.log('WebSocket connected');
-        setIsConnected(true);
-        
-        // Small delay to ensure connection is fully established
-        const preferredMimeTypes = [
-          'audio/webm;codecs=opus',
-          'audio/webm'
-        ];
-        let mimeType = 'audio/webm;codecs=opus';
-        for (const format of preferredMimeTypes) {
+      captureRef.current = new MediaRecorderCapture();
+      audioSequenceRef.current = 0;
+
+      transportRef.current = new WebSocketTransport({
+        url: wsUrl,
+        onOpen: async () => {
+          console.log('WebSocket connected');
+          setIsConnected(true);
+
           try {
-            if (MediaRecorder.isTypeSupported(format)) {
-              mimeType = format;
-              break;
-            }
-          } catch (e) {
-            console.log('Error testing format:', format, e);
+            const { stream, mimeType } = await captureRef.current.start({
+              mediaConstraints: {
+                deviceId: selectedDevice ? { exact: selectedDevice } : undefined,
+                channelCount: 2,
+                sampleRate: 48000,
+                sampleSize: 16,
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false
+              },
+              mimeType: requestedMimeType,
+              audioBitsPerSecond: 192000,
+              timesliceMs: 30,
+              onChunk: (blob) => {
+                transportRef.current.sendAudioChunk({
+                  sequence: audioSequenceRef.current,
+                  blob,
+                  mimeType
+                });
+                audioSequenceRef.current += 1;
+              }
+            });
+
+            mediaStream.current = stream;
+            console.log('🎵 Capture started with mimeType:', mimeType);
+
+            const mountpoint = serverConfig.mountPoint;
+            const configMessage = {
+              type: 'config',
+              sourceName: sourceName,
+              description: description,
+              mountpoint: mountpoint,
+              artistId: selectedArtist?.artistId || null,
+              tags: selectedTags,
+              contentType: mimeType
+            };
+            console.log('📤 Sending broadcast config:', configMessage);
+            transportRef.current.sendConfig(configMessage);
+
+            setIsRecording(true);
+          } catch (error) {
+            console.error('❌ Failed to initialize capture:', error);
+            stopBroadcast();
           }
-        }
-        console.log('🎵 Using audio format:', mimeType);
-
-        setTimeout(() => {
-          // Send broadcast configuration to server
-          const mountpoint = serverConfig.mountPoint;
-          const configMessage = {
-            type: 'config',
-            sourceName: sourceName,
-            description: description,
-            mountpoint: mountpoint,
-            artistId: selectedArtist?.artistId || null,
-            tags: selectedTags,
-            contentType: mimeType
-          };
-          console.log('📤 Sending broadcast config:', configMessage);
-          console.log('📤 WebSocket ready state:', wsRef.current.readyState);
-          console.log('📤 WebSocket URL:', wsRef.current.url);
-          wsRef.current.send(JSON.stringify(configMessage));
-          console.log('📤 Message sent successfully');
-        }, 100);
-        
-        try {
-          mediaRecorder.current = new MediaRecorder(stream, {
-            mimeType: mimeType,
-            audioBitsPerSecond: 128000
-          });
-          console.log('✅ MediaRecorder created successfully');
-        } catch (error) {
-          console.error('❌ Failed to create MediaRecorder:', error);
-          // Fallback to default
-          mediaRecorder.current = new MediaRecorder(stream, {
-            audioBitsPerSecond: 128000
-          });
-          console.log('🔄 Using default MediaRecorder settings');
-          mimeType = 'audio/webm;codecs=opus'; // Update mimeType for fallback to WebM/Opus
-        }
-
-        mediaRecorder.current.ondataavailable = (event) => {
-          if (wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(event.data);
-          } else {
-            console.log('❌ WebSocket not ready, cannot send audio data');
-          }
-        };
-
-        console.log('🎙️ Starting MediaRecorder with 100ms intervals');
-        mediaRecorder.current.start(100);
-        setIsRecording(true);
-        console.log('✅ MediaRecorder started, recording state:', mediaRecorder.current.state);
-      };
-
-      wsRef.current.onclose = () => {
-        console.log('WebSocket closed');
-        setIsConnected(false);
-        stopBroadcast();
-      };
-
-      wsRef.current.onmessage = (event) => {
+        },
+        onClose: () => {
+          console.log('WebSocket closed');
+          setIsConnected(false);
+          stopBroadcast();
+        },
+        onMessage: (event) => {
         console.log('Received message from server:', event.data);
         try {
           const message = JSON.parse(event.data);
           if (message.type === 'icecast-status' && message.status === 'connected') {
+            const outputContentType = message.outputContentType || '';
+            const isMp3Output = outputContentType.toLowerCase().includes('mpeg');
+            const outputBitrate = message.bitrateKbps ? `${message.bitrateKbps} kbps` : '128 kbps';
             setIsConnected(true);
             setBroadcastStats(prev => ({
               ...prev,
               streamTime: '00:00:00',
               listeners: 0,
-              audioFormat: 'OPUS',
-              bitrate: '128 kbps',
+              audioFormat: isMp3Output ? 'MP3' : 'OPUS',
+              bitrate: outputBitrate,
               sampleRate: '48000 Hz',
               channels: 2
             }));
@@ -532,7 +508,14 @@ const IcecastBroadcaster = () => {
         } catch (e) {
           // Non-JSON messages are ignored for UI status updates
         }
-      };
+        },
+        onError: (error) => {
+          console.error('WebSocket error:', error);
+          stopBroadcast();
+        }
+      });
+
+      transportRef.current.connect();
       
     } catch (error) {
       console.error('Failed to start broadcast:', error);
@@ -543,21 +526,17 @@ const IcecastBroadcaster = () => {
   const stopBroadcast = () => {
     console.log('🛑 Stopping broadcast...');
     setStatusMessage('Stopping broadcast...');
-    
-    // First stop the MediaRecorder
-    if (mediaRecorder.current?.state === 'recording') {
-      mediaRecorder.current.stop();
+
+    if (captureRef.current) {
+      captureRef.current.stop();
+      captureRef.current = null;
     }
 
-    // Clean up WebSocket properly
-    if (wsRef.current) {
-      // Only try to close if the connection is still open
-      if (wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.close();
-      }
-      wsRef.current = null;
+    if (transportRef.current) {
+      transportRef.current.close();
+      transportRef.current = null;
     }
-    
+
     // Stop all media tracks
     if (mediaStream.current) {
       mediaStream.current.getTracks().forEach(track => track.stop());
@@ -569,18 +548,9 @@ const IcecastBroadcaster = () => {
     setIsConnected(false);
     setDuration(0);
     connectionAttempts.current = 0;
+    audioSequenceRef.current = 0;
     setStatusMessage('Broadcast stopped');
   };
-
-  // Add WebSocket error handling
-  useEffect(() => {
-    if (wsRef.current) {
-      wsRef.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        stopBroadcast();
-      };
-    }
-  }, []);
 
   // Set up the initial audio chain once a device is selected
   useEffect(() => {
