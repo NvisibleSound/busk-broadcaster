@@ -165,28 +165,35 @@ wss.on('connection', async (ws) => {
 
   const setupIcecastConnection = () => {
     console.log('Setting up Icecast TCP connection...');
-    
+    if (icecast) {
+      icecast.removeAllListeners();
+      icecast.destroy();
+      icecast = null;
+    }
+
     icecast = net.connect({
       host: 'test.buskplayer.com',
       port: 8000
     }, () => {
       console.log('Connected to Icecast TCP, sending source headers');
       
-      const headers = [
+      const safeDesc = String(description || '').replace(/[\r\n]/g, ' ').trim() || 'sounds from the universe';
+      const safeName = String(sourceName || '').replace(/[\r\n]/g, ' ').trim() || 'Ether';
+      const safeTags = Array.isArray(tags) ? tags.map(t => String(t).replace(/[\r\n]/g, ' ').trim()).filter(Boolean) : [];
+      const headerLines = [
         `SOURCE ${mountpoint} HTTP/1.0`,
         'Authorization: Basic ' + Buffer.from('source:EtherIsBetter').toString('base64'),
         `Content-Type: ${icecastContentType}`,
         'Ice-Public: 1',
-        `Ice-Name: ${sourceName}`,
-        `Ice-Description: ${description}`,
-        tags.length > 0 ? `Ice-Genre: ${tags.join(', ')}` : '',
+        `Ice-Name: ${safeName}`,
+        `Ice-Description: ${safeDesc}`,
+        safeTags.length > 0 ? `Ice-Genre: ${safeTags.join(', ')}` : null,
         `Ice-URL: https://test.buskplayer.com${mountpoint}`,
         `Ice-Audio-Info: ice-bitrate=${outputBitrateKbps};ice-samplerate=48000;ice-channels=2`,
-        'User-Agent: busk-broadcaster/1.0',
-        '',
-        ''
-      ].join('\r\n');
-      
+        'User-Agent: busk-broadcaster/1.0'
+      ].filter(Boolean);
+      const headers = headerLines.join('\r\n') + '\r\n\r\n';
+      console.log('Icecast headers:', { IceName: safeName, IceDescription: safeDesc, IceGenre: safeTags });
       icecast.write(headers);
     });
 

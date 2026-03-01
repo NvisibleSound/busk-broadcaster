@@ -84,6 +84,11 @@ wss.on('connection', async (ws) => {
     console.log(`Connecting to Icecast at ${ICECAST_HOST}:${ICECAST_PORT}`);
     console.log('Mountpoint:', mountpoint);
     console.log('Source name:', sourceName);
+    if (icecast) {
+      icecast.removeAllListeners();
+      icecast.destroy();
+      icecast = null;
+    }
 
     // Connect directly to Icecast (no TLS needed inside Docker network)
     icecast = net.connect({
@@ -92,22 +97,23 @@ wss.on('connection', async (ws) => {
     }, () => {
       console.log('Connected to Icecast, sending headers');
 
-      const headers = [
+      const safeDesc = String(description || '').replace(/[\r\n]/g, ' ').trim() || 'sounds from the universe';
+      const safeName = String(sourceName || '').replace(/[\r\n]/g, ' ').trim() || 'Ether';
+      const safeTags = Array.isArray(tags) ? tags.map(t => String(t).replace(/[\r\n]/g, ' ').trim()).filter(Boolean) : [];
+      const headerLines = [
         `SOURCE ${mountpoint} HTTP/1.0`,
         'Authorization: Basic ' + Buffer.from(`source:${ICECAST_PASSWORD}`).toString('base64'),
         'Content-Type: audio/mpeg',
         'Ice-Public: 1',
-        `Ice-Name: ${sourceName}`,
-        `Ice-Description: ${description}`,
-        tags.length > 0 ? `Ice-Genre: ${tags.join(', ')}` : '',
+        `Ice-Name: ${safeName}`,
+        `Ice-Description: ${safeDesc}`,
+        safeTags.length > 0 ? `Ice-Genre: ${safeTags.join(', ')}` : null,
         `Ice-URL: https://test.buskplayer.com${mountpoint}`,
         'Ice-Audio-Info: ice-bitrate=128;ice-samplerate=48000;ice-channels=2',
-        'User-Agent: busk-broadcaster/1.0',
-        '',
-        ''
-      ].filter(h => h !== '').join('\r\n');
-
-      console.log('Sending headers to Icecast');
+        'User-Agent: busk-broadcaster/1.0'
+      ].filter(Boolean);
+      const headers = headerLines.join('\r\n') + '\r\n\r\n';
+      console.log('Icecast headers:', { IceName: safeName, IceDescription: safeDesc, IceGenre: safeTags });
       icecast.write(headers);
     });
 

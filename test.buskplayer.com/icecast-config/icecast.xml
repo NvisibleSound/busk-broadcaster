@@ -44,10 +44,7 @@
         <fallback-when-full>1</fallback-when-full>
         <hidden>0</hidden>
         <public>1</public>
-        <stream-name>Ether</stream-name>
-        <stream-description>Live music streaming (test)</stream-description>
-        <stream-url>https://test.buskplayer.com</stream-url>
-        <genre>Various</genre>
+        <!-- stream-name, stream-description, stream-url, genre: omitted so source client Ice-* headers can set them -->
     </mount>
     
     <!-- Logging -->

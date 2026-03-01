@@ -839,7 +839,16 @@ const IcecastBroadcaster = () => {
           <div className={styles.artistName}>
             {selectedArtist ? selectedArtist.name : 'Busk Broadcaster'}
           </div>
-          </div>
+          <input
+            type="text"
+            className={styles.broadcastDescriptionInput}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Stream description (sent to Icecast)"
+            disabled={isRecording}
+            aria-label="Broadcast description"
+          />
+        </div>
 
         {/* //TAB NAVIGATION */}
         <div className={styles.tabContainer}>
