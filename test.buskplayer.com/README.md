@@ -135,6 +135,9 @@ ffmpeg -re -i /path/to/audio.mp3 \
 ### Commands
 
 ```bash
+# Deploy (pull latest code + rebuild + restart) - run on server
+./scripts/deploy.sh
+
 # Start all services
 docker compose up -d
 
