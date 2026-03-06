@@ -32,20 +32,8 @@
         <bind-address>0.0.0.0</bind-address>
     </listen-socket>
     
-    <!-- Mount Points -->
-    <mount>
-        <mount-name>/ether</mount-name>
-        <password>EtherIsBetter</password>
-        <max-listeners>100</max-listeners>
-        <dump-file>dump.log</dump-file>
-        <burst-size>8192</burst-size>
-        <fallback-mount>/fallback</fallback-mount>
-        <fallback-override>1</fallback-override>
-        <fallback-when-full>1</fallback-when-full>
-        <hidden>0</hidden>
-        <public>1</public>
-        <!-- stream-name, stream-description, stream-url, genre: omitted so source client Ice-* headers can set them -->
-    </mount>
+    <!-- Mount Points: none pre-defined; broadcaster controls mountpoint via SOURCE request.
+         Uses default source-password (EtherIsBetter) for all mounts. -->
     
     <!-- Logging -->
     <logging>
